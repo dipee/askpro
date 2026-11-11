@@ -23,9 +23,13 @@ const COLUMNS = "clerk_user_id, plan, created_at";
 
 async function readOwnAccount(): Promise<Account | null> {
   // Owner client: RLS limits this to the caller's own row.
+  // Next.js memoizes identical GET fetches within one server render, so the
+  // re-read after the insert would get the first read's empty result. A fresh
+  // AbortSignal opts each read out of that memoization (Next.js fetch docs).
   const { data, error } = await createOwnerClient()
     .from("accounts")
     .select(COLUMNS)
+    .abortSignal(new AbortController().signal)
     .maybeSingle();
   if (error) throw new Error(`Reading the account failed: ${error.message}`);
   if (!data) return null;
