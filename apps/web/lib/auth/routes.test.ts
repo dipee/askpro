@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { classifyRoute } from "./routes";
+import { describe, expect, it, vi } from "vitest";
+import { classifyRoute, gateRequest, type GateAuth } from "./routes";
 import { unauthorizedResponse } from "./unauthorized";
 
 describe("classifyRoute", () => {
@@ -49,5 +49,65 @@ describe("unauthorizedResponse", () => {
     expect(await res.json()).toEqual({
       error: { code: "unauthorized", message: "Sign in required." },
     });
+  });
+});
+
+const BASE = "https://askwell.test";
+
+function fakeAuth(isAuthenticated: boolean) {
+  const redirectToSignIn = vi.fn(
+    ({ returnBackUrl }: { returnBackUrl: string }) =>
+      Response.redirect(
+        `${BASE}/sign-in?redirect_url=${encodeURIComponent(returnBackUrl)}`,
+        307,
+      ),
+  );
+  const getAuth = vi.fn(
+    async (): Promise<GateAuth> => ({ isAuthenticated, redirectToSignIn }),
+  );
+  return { getAuth, redirectToSignIn };
+}
+
+describe("gateRequest", () => {
+  it("answers a signed-out /api/projects request with a 401 JSON error", async () => {
+    const { getAuth, redirectToSignIn } = fakeAuth(false);
+    const res = await gateRequest(getAuth, new URL(`${BASE}/api/projects`));
+
+    expect(res?.status).toBe(401);
+    expect(res?.headers.get("content-type")).toContain("application/json");
+    expect(await res?.json()).toEqual({
+      error: { code: "unauthorized", message: "Sign in required." },
+    });
+    expect(redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("redirects a signed-out /dashboard request to sign-in", async () => {
+    const { getAuth, redirectToSignIn } = fakeAuth(false);
+    const url = new URL(`${BASE}/dashboard`);
+    const res = await gateRequest(getAuth, url);
+
+    expect(redirectToSignIn).toHaveBeenCalledWith({
+      returnBackUrl: url.toString(),
+    });
+    expect(res?.status).toBe(307);
+    expect(res?.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("lets signed-in owners through", async () => {
+    const { getAuth } = fakeAuth(true);
+    expect(
+      await gateRequest(getAuth, new URL(`${BASE}/api/projects`)),
+    ).toBeUndefined();
+    expect(
+      await gateRequest(getAuth, new URL(`${BASE}/dashboard`)),
+    ).toBeUndefined();
+  });
+
+  it("skips auth on public routes", async () => {
+    const { getAuth } = fakeAuth(false);
+    for (const path of ["/", "/embed", "/api/widget/config"]) {
+      expect(await gateRequest(getAuth, new URL(`${BASE}${path}`))).toBeUndefined();
+    }
+    expect(getAuth).not.toHaveBeenCalled();
   });
 });

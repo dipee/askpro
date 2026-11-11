@@ -1,5 +1,7 @@
 // Which paths need a signed-in owner. Used by `proxy.ts`.
-// Pure (no Clerk import) so it can be unit-tested.
+// Pure (no Clerk import) so it can be unit-tested; `proxy.ts` passes in
+// Clerk's auth to `gateRequest`.
+import { unauthorizedResponse } from "./unauthorized";
 
 export const SIGN_IN_URL = "/sign-in";
 export const SIGN_UP_URL = "/sign-up";
@@ -23,6 +25,7 @@ function underPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
+/** Classify a pathname as public, a protected page or a protected API route. */
 export function classifyRoute(pathname: string): RouteAccess {
   if (PROTECTED_API_PREFIXES.some((p) => underPrefix(pathname, p))) {
     return "protected-api";
@@ -31,4 +34,29 @@ export function classifyRoute(pathname: string): RouteAccess {
     return "protected-page";
   }
   return "public";
+}
+
+/** The parts of Clerk's middleware auth object the gate uses. */
+export type GateAuth = {
+  isAuthenticated: boolean;
+  redirectToSignIn: (opts: { returnBackUrl: string }) => Response;
+};
+
+/**
+ * Decide what the proxy does with a request.
+ * Returns `undefined` to let it through, a 401 JSON response for a signed-out
+ * owner API call, or a redirect to sign-in for a signed-out owner page.
+ */
+export async function gateRequest(
+  getAuth: () => Promise<GateAuth>,
+  url: URL,
+): Promise<Response | undefined> {
+  const access = classifyRoute(url.pathname);
+  if (access === "public") return undefined;
+
+  const { isAuthenticated, redirectToSignIn } = await getAuth();
+  if (isAuthenticated) return undefined;
+
+  if (access === "protected-api") return unauthorizedResponse();
+  return redirectToSignIn({ returnBackUrl: url.toString() });
 }
