@@ -16,21 +16,31 @@ const ownerFrom = vi.hoisted(() => vi.fn());
 vi.mock("server-only", () => ({}));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authFn }));
 
-// Owner client: RLS returns only the caller's row.
+// Owner client: RLS returns only the caller's row. Like Next.js's fetch
+// memoization within one render, a read without its own AbortSignal reuses the
+// previous read's result.
+const memo = vi.hoisted(() => ({ last: null as { data: Row | null; error: DbError } | null }));
 vi.mock("./supabase/owner", () => ({
   createOwnerClient: () => ({
     from: (table: string) => {
       ownerFrom(table);
-      return {
-        select: () => ({
-          maybeSingle: async () => {
-            await Promise.resolve();
-            if (db.readError) return { data: null, error: db.readError };
-            const { userId } = await authFn();
-            return { data: (userId && db.rows.get(userId)) || null, error: null };
-          },
-        }),
+      let signal: AbortSignal | undefined;
+      const query = {
+        abortSignal: (s: AbortSignal) => {
+          signal = s;
+          return query;
+        },
+        maybeSingle: async () => {
+          if (!signal && memo.last) return memo.last;
+          await Promise.resolve();
+          if (db.readError) return { data: null, error: db.readError };
+          const { userId } = await authFn();
+          const result = { data: (userId && db.rows.get(userId)) || null, error: null };
+          if (!signal) memo.last = result;
+          return result;
+        },
       };
+      return { select: () => query };
     },
   }),
 }));
@@ -55,6 +65,7 @@ vi.mock("./supabase/service", () => ({
 const { ensureAccount, UnauthorizedError } = await import("./accounts");
 
 beforeEach(() => {
+  memo.last = null;
   db.rows.clear();
   db.readError = null;
   db.insertError = null;
