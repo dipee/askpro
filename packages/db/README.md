@@ -18,4 +18,4 @@ await pg.close();
 
 `pg.as(role, sub, fn)` runs `fn` in one transaction as `role`, with JWT claims `{ role, sub }`. A failing statement rolls the whole transaction back, so test each refused statement in its own `as` call.
 
-Tests live in `tests/` and run with `pnpm test`. Each test file boots its own database; files run one at a time to keep memory low.
+Tests live in `tests/`. Run them from the repository root: `pnpm test` runs every package's tests, `pnpm vitest run --project db` runs only these. Each test file boots its own database; files run one at a time to keep memory low.
