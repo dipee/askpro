@@ -1,13 +1,27 @@
-import { UserButton } from "@clerk/nextjs";
+import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
+import { APP_NAME } from "@askwell/shared";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 
-// Placeholder so the sign-in redirect can be tested. B2 replaces it.
-export default async function DashboardPage() {
+export const metadata: Metadata = { title: `Projects · ${APP_NAME}` };
+
+// Phase 2 wires "New project" and lists projects here.
+export default async function ProjectsPage() {
   await auth.protect();
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-      <UserButton />
-    </main>
+    <>
+      <PageHeader title="Projects" description="Each project is one chat widget for one website." />
+      <EmptyState
+        title="No projects yet"
+        description="Create a project to add your knowledge and get the embed code for your site."
+        action={
+          <Button disabled title="Coming soon">
+            New project
+          </Button>
+        }
+      />
+    </>
   );
 }
