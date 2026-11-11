@@ -7,10 +7,11 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm run widget:build && next dev",
+    "build": "pnpm run widget:build && next build",
     "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "widget:build": "pnpm --filter @askwell/widget build && node -e \"const f=require('fs');f.mkdirSync('public',{recursive:true});f.copyFileSync('../widget/dist/widget.js','public/widget.js')\""
   },
   "dependencies": {
     "@askwell/db": "workspace:*",
@@ -23,6 +24,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@askwell/widget": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
