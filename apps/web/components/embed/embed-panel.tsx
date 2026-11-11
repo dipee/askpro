@@ -8,11 +8,13 @@ import { chatReducer, initialChatState, MOCK_REPLY, MOCK_REPLY_DELAY_MS } from "
 import { ChatView } from "./chat-view";
 import { loadWidgetConfig } from "./load-config";
 import { createParentMessageHandler, postToParent } from "./parent-messaging";
-import { getVisitorId } from "./visitor-id";
+import { getVisitorId, newVisitorId } from "./visitor-id";
 
 type ConfigState = { status: "loading" } | { status: "ready"; config: WidgetConfig } | { status: "unavailable" };
 
-const newId = () => crypto.randomUUID();
+// Not crypto.randomUUID(): it's missing when an http:// host page frames the
+// panel (not a secure context). getRandomValues works everywhere.
+const newId = () => newVisitorId();
 
 /** The chat panel inside the widget iframe. */
 export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; parentOrigin: string | null }) {

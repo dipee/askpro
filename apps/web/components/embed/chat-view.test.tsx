@@ -2,7 +2,7 @@ import { APP_NAME, MAX_CHAT_MESSAGE_CHARS } from "@askwell/shared";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "./chat-state";
-import { ChatView } from "./chat-view";
+import { ChatView, isNearBottom, NEAR_BOTTOM_PX, remainingNotice, shouldAutoScroll } from "./chat-view";
 
 const noop = () => {};
 function render(props: Partial<Parameters<typeof ChatView>[0]> = {}) {
@@ -60,5 +60,35 @@ describe("ChatView", () => {
     expect(render({ draft: "" })).toMatch(/<button type="submit" disabled=""/);
     expect(render({ draft: "hi", typing: true })).toMatch(/<button type="submit" disabled=""/);
     expect(render({ draft: "hi" })).not.toMatch(/<button type="submit" disabled=""/);
+  });
+});
+
+describe("remaining-characters notice", () => {
+  it("is a persistent polite status region, empty until the last 100 characters", () => {
+    const far = render({ draft: "hi" });
+    expect(far).toMatch(/<p role="status" aria-live="polite"[^>]*><\/p>/);
+    const near = render({ draft: "x".repeat(MAX_CHAT_MESSAGE_CHARS - 40) });
+    expect(near).toMatch(/<p role="status" aria-live="polite"[^>]*>40 characters left<\/p>/);
+  });
+
+  it("remainingNotice counts down from 100", () => {
+    expect(remainingNotice(0)).toBe("");
+    expect(remainingNotice(MAX_CHAT_MESSAGE_CHARS - 101)).toBe("");
+    expect(remainingNotice(MAX_CHAT_MESSAGE_CHARS - 100)).toBe("100 characters left");
+    expect(remainingNotice(MAX_CHAT_MESSAGE_CHARS)).toBe("0 characters left");
+  });
+});
+
+describe("auto-scroll", () => {
+  it("isNearBottom allows a small threshold", () => {
+    expect(isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 })).toBe(true);
+    expect(isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 - NEAR_BOTTOM_PX })).toBe(true);
+    expect(isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 300 })).toBe(false);
+  });
+
+  it("scrolls after the visitor sends, and for replies only when near the bottom", () => {
+    expect(shouldAutoScroll(false, "visitor")).toBe(true);
+    expect(shouldAutoScroll(true, "bot")).toBe(true);
+    expect(shouldAutoScroll(false, "bot")).toBe(false);
   });
 });

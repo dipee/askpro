@@ -1,6 +1,31 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useLayoutEffect, useRef, type FormEvent } from "react";
 import { APP_NAME, MAX_CHAT_MESSAGE_CHARS } from "@askwell/shared";
 import type { ChatMessage } from "./chat-state";
+
+/** How close to the bottom (px) still counts as "at the bottom". */
+export const NEAR_BOTTOM_PX = 48;
+
+/** True when the list is scrolled to (or near) its bottom. */
+export function isNearBottom(el: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
+}
+
+/**
+ * Whether new content should scroll the list to the bottom: always after the
+ * visitor sends, otherwise only if they were already near the bottom (so we
+ * don't yank them away from earlier messages they scrolled up to read).
+ */
+export function shouldAutoScroll(wasNearBottom: boolean, lastRole: ChatMessage["role"] | undefined): boolean {
+  return lastRole === "visitor" || wasNearBottom;
+}
+
+/** Text for the remaining-characters notice, or "" while far from the limit. */
+export function remainingNotice(draftLength: number): string {
+  const remaining = MAX_CHAT_MESSAGE_CHARS - draftLength;
+  return remaining <= 100 ? `${remaining} characters left` : "";
+}
 
 type ChatViewProps = {
   headerText: string;
@@ -28,11 +53,23 @@ export function ChatView({
   onClose,
 }: ChatViewProps) {
   const canSend = draft.trim().length > 0 && !typing;
+  const listRef = useRef<HTMLOListElement>(null);
+  const nearBottom = useRef(true);
+  const lastRole = messages.at(-1)?.role;
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list && shouldAutoScroll(nearBottom.current, lastRole)) {
+      list.scrollTop = list.scrollHeight;
+      nearBottom.current = true;
+    }
+  }, [messages.length, typing, lastRole]);
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (canSend) onSend();
   };
-  const remaining = MAX_CHAT_MESSAGE_CHARS - draft.length;
+  const notice = remainingNotice(draft.length);
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-white/80 text-foreground backdrop-blur-glass">
@@ -50,7 +87,14 @@ export function ChatView({
         </button>
       </header>
 
-      <ol aria-live="polite" aria-label="Messages" className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4 text-sm">
+      <ol
+        ref={listRef}
+        onScroll={(e) => {
+          nearBottom.current = isNearBottom(e.currentTarget);
+        }}
+        aria-live="polite"
+        aria-label="Messages"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4 text-sm">
         {messages.length === 0 ? (
           <li className="m-auto max-w-[16rem] text-center text-muted-foreground">
             Ask a question and we&apos;ll answer here.
@@ -106,9 +150,10 @@ export function ChatView({
             </svg>
           </button>
         </div>
-        {remaining <= 100 ? (
-          <p className="mt-1 px-4 text-right text-[11px] text-muted-foreground">{remaining} characters left</p>
-        ) : null}
+        {/* Always mounted so screen readers announce changes politely. */}
+        <p role="status" aria-live="polite" className="px-4 text-right text-[11px] text-muted-foreground empty:hidden">
+          {notice}
+        </p>
         {showBadge ? (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Powered by{" "}
