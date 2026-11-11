@@ -17,8 +17,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-glass-border bg-glass px-4 backdrop-blur-glass md:hidden">
-        <MobileNav />
-        <span className="text-base font-semibold tracking-tight">{APP_NAME}</span>
+        <div className="flex items-center gap-2">
+          <MobileNav />
+          <span className="text-base font-semibold tracking-tight">{APP_NAME}</span>
+        </div>
         <UserButton />
       </header>
 

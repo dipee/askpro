@@ -28,7 +28,7 @@ export function MobileNav() {
         <nav
           id="mobile-nav"
           aria-label="Dashboard"
-          className="absolute inset-x-0 top-full border-b border-glass-border bg-white/90 p-3 shadow-md backdrop-blur-glass"
+          className="absolute inset-x-0 top-full border-b border-border bg-background p-3 shadow-md"
         >
           <NavLinks pathname={pathname} onNavigate={close} />
         </nav>
