@@ -7,6 +7,15 @@ AI support chat widget for any website. See `docs/project.md` for what we build 
 - Node 24 (`.nvmrc`)
 - pnpm 10 (pinned in `package.json` → `packageManager`; `corepack enable` picks it up)
 
+## Run locally
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Then open http://localhost:3000.
+
 ## Layout
 
 ```
