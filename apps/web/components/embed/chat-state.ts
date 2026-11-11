@@ -1,9 +1,17 @@
 import type { MessageRole } from "@askwell/shared";
+import { newVisitorId } from "./visitor-id";
 
 /** Phase 2 stand-in. The chat route (Phase 3) replaces it. */
 export const MOCK_REPLY = "Thanks! Real answers arrive soon.";
 /** How long the typing state shows before the mock reply. */
 export const MOCK_REPLY_DELAY_MS = 800;
+
+/**
+ * ID for a chat message (React key). Not crypto.randomUUID(): it's missing
+ * when an http:// host page frames the panel (not a secure context), which
+ * made the first send throw. getRandomValues works everywhere.
+ */
+export const newMessageId = (): string => newVisitorId();
 
 export type ChatMessage = { id: string; role: MessageRole; text: string };
 export type ChatState = { messages: ChatMessage[]; typing: boolean };
