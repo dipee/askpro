@@ -29,9 +29,11 @@ async function tryAsSuperuser(sql: string, params: unknown[] = []) {
 }
 
 describe("migration", () => {
-  it("is one init_schema file that applies cleanly", () => {
-    expect(pg.migrations).toHaveLength(1);
+  it("all apply cleanly, init_schema first, each named <UTC timestamp>_<name>.sql", () => {
     expect(pg.migrations[0]).toMatch(/^\d{14}_init_schema\.sql$/);
+    for (const name of pg.migrations) expect(name).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    const versions = pg.migrations.map((name) => name.slice(0, 14));
+    expect(new Set(versions).size).toBe(versions.length);
   });
 
   it("creates the 7 tables of project.md §7 with exactly their columns", async () => {
