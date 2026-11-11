@@ -40,7 +40,13 @@ export async function POST(request: Request): Promise<Response> {
 
   // The plan comes from our database, never from the request (project.md §5).
   // ensureAccount() creates the Free account row on a brand-new user's first call.
-  const account = await ensureAccount();
+  let account: Awaited<ReturnType<typeof ensureAccount>>;
+  try {
+    account = await ensureAccount();
+  } catch (error) {
+    console.error("ensureAccount failed", error instanceof Error ? error.message : error);
+    return errorResponse("internal", "Something went wrong.");
+  }
   const maxProjects = PLAN_LIMITS[account.plan].projects;
 
   // Service client only for create_project, for the user ID Clerk's auth() returned.

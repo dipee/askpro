@@ -7,6 +7,7 @@ const h = vi.hoisted(async () => {
     service: fakeClient("service"),
     userId: { value: "user_a" as string | null },
     plan: { value: "free" as "free" | "pro" },
+    accountError: { value: null as Error | null },
   };
 });
 
@@ -19,11 +20,16 @@ vi.mock("../../../lib/supabase/owner", async () => ({ createOwnerClient: (await 
 vi.mock("../../../lib/supabase/service", async () => ({ createServiceClient: (await h).service.create }));
 vi.mock("../../../lib/accounts", async () => {
   const s = await h;
-  return { ensureAccount: async () => ({ clerkUserId: s.userId.value, plan: s.plan.value, createdAt: "" }) };
+  return {
+    ensureAccount: async () => {
+      if (s.accountError.value) throw s.accountError.value;
+      return { clerkUserId: s.userId.value, plan: s.plan.value, createdAt: "" };
+    },
+  };
 });
 
 const { GET, POST } = await import("./route");
-const { owner, service, userId, plan } = await h;
+const { owner, service, userId, plan, accountError } = await h;
 
 const ROW = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -56,6 +62,7 @@ beforeEach(() => {
   }
   userId.value = "user_a";
   plan.value = "free";
+  accountError.value = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -138,6 +145,14 @@ describe("POST /api/projects", () => {
     const res = await post({ name: "Help desk" });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: { code: "internal", message: "Something went wrong." } });
+  });
+
+  it("500 in the API error shape when reading or creating the account fails", async () => {
+    accountError.value = new Error("Reading the account failed: connection refused");
+    const res = await post({ name: "Help desk" });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: { code: "internal", message: "Something went wrong." } });
+    expect(service.create).not.toHaveBeenCalled();
   });
 
   it("401 when signed out", async () => {
