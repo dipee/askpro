@@ -64,4 +64,6 @@ describe("extra edge cases", () => {
     ).toBe(false));
   it("config rejects a bad color", () =>
     expect(updateWidgetConfigSchema.safeParse({ buttonColor: "blue" }).success).toBe(false));
+  it("config rejects a patch whose only keys are undefined", () =>
+    expect(updateWidgetConfigSchema.safeParse({ buttonColor: undefined }).success).toBe(false));
 });
