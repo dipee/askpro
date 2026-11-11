@@ -4,17 +4,14 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { EMBED_MESSAGE_TYPES, type WidgetConfig } from "@askwell/shared";
 import { Spinner } from "@/components/ui/spinner";
 import { ChatUnavailable } from "./chat-unavailable";
-import { chatReducer, initialChatState, MOCK_REPLY, MOCK_REPLY_DELAY_MS } from "./chat-state";
+import { chatReducer, initialChatState, MOCK_REPLY, MOCK_REPLY_DELAY_MS, newMessageId } from "./chat-state";
 import { ChatView } from "./chat-view";
 import { loadWidgetConfig } from "./load-config";
 import { createParentMessageHandler, postToParent } from "./parent-messaging";
-import { getVisitorId, newVisitorId } from "./visitor-id";
+import { getVisitorId } from "./visitor-id";
 
 type ConfigState = { status: "loading" } | { status: "ready"; config: WidgetConfig } | { status: "unavailable" };
 
-// Not crypto.randomUUID(): it's missing when an http:// host page frames the
-// panel (not a secure context). getRandomValues works everywhere.
-const newId = () => newVisitorId();
 
 /** The chat panel inside the widget iframe. */
 export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; parentOrigin: string | null }) {
@@ -66,10 +63,10 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
   const send = () => {
     const text = draft.trim();
     if (!text || chat.typing) return;
-    dispatch({ type: "send", id: newId(), text });
+    dispatch({ type: "send", id: newMessageId(), text });
     setDraft("");
     replyTimer.current = setTimeout(() => {
-      dispatch({ type: "reply", id: newId(), text: MOCK_REPLY });
+      dispatch({ type: "reply", id: newMessageId(), text: MOCK_REPLY });
     }, MOCK_REPLY_DELAY_MS);
   };
 
