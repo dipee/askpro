@@ -60,6 +60,9 @@ importers:
         specifier: 0.0.1
         version: 0.0.1
     devDependencies:
+      '@askwell/widget':
+        specifier: workspace:*
+        version: link:../widget
       '@tailwindcss/postcss':
         specifier: 4.3.3
         version: 4.3.3
@@ -74,6 +77,10 @@ importers:
         version: 4.3.3
 
   apps/widget:
+    dependencies:
+      '@askwell/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       esbuild:
         specifier: 0.28.2

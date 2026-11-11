@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --minify --format=iife --target=es2018 --outfile=dist/widget.js",
-    "dev": "esbuild src/index.ts --bundle --format=iife --target=es2018 --outfile=dist/widget.js --watch=forever",
+    "build": "esbuild src/index.ts --bundle --minify --format=iife --target=es2020 --outfile=dist/widget.js",
+    "dev": "esbuild src/index.ts --bundle --format=iife --target=es2020 --outfile=dist/widget.js --watch=forever",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "esbuild": "0.28.2"
+  },
+  "dependencies": {
+    "@askwell/shared": "workspace:*"
   }
 }

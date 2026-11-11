@@ -19,3 +19,6 @@ next-env.d.ts
 .DS_Store
 *.log
 coverage/
+
+# built from apps/widget by `pnpm --filter @askwell/web build`
+apps/web/public/widget.js
