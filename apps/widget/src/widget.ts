@@ -15,6 +15,14 @@ export function findScript(doc: Document): HTMLScriptElement | null {
   return (doc.currentScript as HTMLScriptElement | null) ?? doc.querySelector('script[data-key][src*="widget.js"]');
 }
 
+/** The single warning for every reason the widget doesn't render. */
+export const NOT_RENDERING = "[widget] bad key, origin or config; not rendering";
+
+/** HTTPS only, so config and chat never travel in cleartext; plain http only for local dev. */
+export function isAllowedAppOrigin(origin: string): boolean {
+  return /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$)/.test(origin);
+}
+
 /** Fetches and validates the config; null on any failure. */
 export async function loadConfig(appOrigin: string, key: string, fetchFn: typeof fetch): Promise<WidgetConfig | null> {
   try {
@@ -37,13 +45,13 @@ export async function boot(script: HTMLScriptElement | null, env: BootEnv): Prom
   } catch {
     // handled below
   }
-  if (!isPublicKey(key) || !appOrigin.startsWith("http")) {
-    env.warn("[widget] invalid data-key");
+  if (!isPublicKey(key) || !isAllowedAppOrigin(appOrigin)) {
+    env.warn(NOT_RENDERING);
     return false;
   }
   const config = await loadConfig(appOrigin, key, env.fetchFn);
   if (!config) {
-    env.warn("[widget] config unavailable");
+    env.warn(NOT_RENDERING);
     return false;
   }
   render(config, appOrigin, key, env);
@@ -75,6 +83,12 @@ function render(config: WidgetConfig, appOrigin: string, key: string, { doc, win
   panel.setAttribute("aria-label", config.headerText);
   let frame: HTMLIFrameElement | null = null;
   let open = false;
+  let unread = 0;
+  // The panel's latest count is the source of truth; show it while closed.
+  const syncBadge = () => {
+    badge.textContent = unread > 99 ? "99+" : String(unread);
+    badge.hidden = open || unread === 0;
+  };
 
   const setOpen = (next: boolean) => {
     open = next;
@@ -87,7 +101,7 @@ function render(config: WidgetConfig, appOrigin: string, key: string, { doc, win
     // Next frame so the transition runs from the hidden state.
     win.requestAnimationFrame(() => panel.classList.toggle("o", next));
     button.setAttribute("aria-expanded", String(next));
-    if (next) badge.hidden = true;
+    syncBadge();
   };
 
   button.addEventListener("click", () => setOpen(!open));
@@ -100,16 +114,16 @@ function render(config: WidgetConfig, appOrigin: string, key: string, { doc, win
         setOpen(false);
         button.focus();
       },
-      onResize: (h) => {
-        panel.style.height = `${h}px`;
-      },
+      // Via a CSS variable so the narrow-screen full-screen rule still wins.
+      onResize: (h) => panel.style.setProperty("--h", `${h}px`),
       onUnread: (n) => {
-        badge.textContent = n > 99 ? "99+" : String(n);
-        badge.hidden = open || n === 0;
+        unread = n;
+        syncBadge();
       },
     }),
   );
 
-  root.append(style, panel, button);
+  // Button before panel: Tab from the button moves into the open chat.
+  root.append(style, button, panel);
   doc.body.append(host);
 }

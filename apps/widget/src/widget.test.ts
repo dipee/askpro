@@ -1,6 +1,6 @@
 import { DEFAULT_WIDGET_CONFIG } from "@askwell/shared";
 import { describe, expect, it, vi } from "vitest";
-import { boot, loadConfig, type BootEnv } from "./widget";
+import { boot, isAllowedAppOrigin, loadConfig, NOT_RENDERING, type BootEnv } from "./widget";
 
 const APP = "https://app.askwell.test";
 
@@ -36,6 +36,7 @@ describe("boot: bad key or failure renders nothing", () => {
     ["a key with spaces", script({ key: "pk_ab cd" })],
     ["no script", null],
     ["a non-http src", script({ key: "pk_abc", src: "file:///widget.js" })],
+    ["a cleartext http app origin", script({ key: "pk_abc", src: "http://app.askwell.test/widget.js" })],
   ])("%s → no fetch, no DOM change, one warn", async (_label, s) => {
     const fetchFn = vi.fn();
     const { e, createElement, append, warn } = env(fetchFn);
@@ -43,7 +44,7 @@ describe("boot: bad key or failure renders nothing", () => {
     expect(fetchFn).not.toHaveBeenCalled();
     expect(createElement).not.toHaveBeenCalled();
     expect(append).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledExactlyOnceWith(NOT_RENDERING);
   });
 
   it.each([
@@ -71,4 +72,15 @@ describe("loadConfig", () => {
     expect(await loadConfig(APP, "pk_a/b", fetchFn as unknown as typeof fetch)).toEqual(DEFAULT_WIDGET_CONFIG);
     expect(fetchFn).toHaveBeenCalledWith(`${APP}/api/widget/config?key=pk_a%2Fb`);
   });
+});
+
+describe("isAllowedAppOrigin", () => {
+  it.each(["https://app.askwell.test", "https://x.vercel.app", "http://localhost:3000", "http://localhost", "http://127.0.0.1:3000"])(
+    "allows %s",
+    (o) => expect(isAllowedAppOrigin(o)).toBe(true),
+  );
+  it.each(["http://app.askwell.test", "http://localhost.evil.test", "http://127.0.0.1.evil.test", "file://", "null", ""])(
+    "rejects %s",
+    (o) => expect(isAllowedAppOrigin(o)).toBe(false),
+  );
 });

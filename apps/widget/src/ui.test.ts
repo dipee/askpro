@@ -11,6 +11,12 @@ describe("embedUrl", () => {
 });
 
 describe("textColorFor", () => {
+  it("picks the higher WCAG contrast (black on #ff00ff, not white)", () => {
+    expect(textColorFor("#ff00ff")).toBe("#000"); // 6.70 vs 3.14
+    expect(textColorFor("#767676")).toBe("#000"); // 4.62 vs 4.54
+    expect(textColorFor("#757575")).toBe("#fff"); // 4.56 vs 4.61
+  });
+
   it("picks readable text", () => {
     expect(textColorFor("#000000")).toBe("#fff");
     expect(textColorFor("#ffffff")).toBe("#000");

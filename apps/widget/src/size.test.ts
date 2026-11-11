@@ -11,7 +11,7 @@ describe("widget.js bundle", () => {
       bundle: true,
       minify: true,
       format: "iife",
-      target: "es2018",
+      target: "es2020",
       write: false,
       logLevel: "silent",
     });
