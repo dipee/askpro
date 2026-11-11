@@ -15,6 +15,8 @@ export default defineConfig([
     "**/next-env.d.ts",
     "**/coverage/**",
     "packages/db/types.ts",
+    // Minified build output of apps/widget, copied in by `pnpm --filter @askwell/web build`.
+    "apps/web/public/widget.js",
   ]),
 
   // Next.js app: Next's own config (React, hooks, a11y, Core Web Vitals, TS).
