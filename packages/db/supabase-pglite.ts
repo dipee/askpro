@@ -5,6 +5,7 @@
  * It stubs what Supabase provides before our migrations run:
  * - the API roles `anon`, `authenticated`, `service_role` (`service_role` bypasses RLS)
  * - the `extensions` schema and `auth.jwt()`, which reads `request.jwt.claims`
+ * - `storage.buckets` and `storage.objects` (RLS on, no policies)
  * - Supabase's default privileges: anon and authenticated get everything on new
  *   `public` tables and functions, so each migration must revoke what it doesn't grant
  *
@@ -36,6 +37,27 @@ const SUPABASE_STUB = `
     )::jsonb
   $$;
   grant execute on function auth.jwt() to anon, authenticated, service_role;
+
+  -- Supabase Storage's tables, with the columns our migrations use. Like Supabase,
+  -- storage.objects has RLS on and no policies until a migration adds some.
+  create schema storage;
+  create table storage.buckets (
+    id text primary key,
+    name text not null,
+    public boolean default false,
+    file_size_limit bigint,
+    allowed_mime_types text[],
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+  );
+  create table storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text references storage.buckets (id),
+    name text
+  );
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to anon, authenticated, service_role;
+  grant all on storage.buckets, storage.objects to anon, authenticated, service_role;
 
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
