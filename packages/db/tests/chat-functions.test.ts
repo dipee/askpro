@@ -115,11 +115,17 @@ describe("consume_message", () => {
 });
 
 describe("save_chat_turn", () => {
-  function save(projectId: string, conversationId: string | null, visitor = "Hi", bot = "Hello!") {
+  function save(
+    projectId: string,
+    conversationId: string | null,
+    visitor = "Hi",
+    bot = "Hello!",
+    visitorId = "visitor_0001",
+  ) {
     return pg.as("service_role", null, async (s) => {
       const { rows } = await s.query<{ id: string }>(
-        "select public.save_chat_turn(p_project_id => $1, p_visitor_id => 'visitor_0001', p_conversation_id => $2, p_visitor_body => $3, p_bot_body => $4) as id",
-        [projectId, conversationId, visitor, bot],
+        "select public.save_chat_turn(p_project_id => $1, p_visitor_id => $5, p_conversation_id => $2, p_visitor_body => $3, p_bot_body => $4) as id",
+        [projectId, conversationId, visitor, bot, visitorId],
       );
       return rows[0].id;
     });
@@ -170,6 +176,24 @@ describe("save_chat_turn", () => {
     await expectRaise(save(mine, UNKNOWN), "P0002", "conversation_not_found");
     expect(await messages(theirs)).toHaveLength(2);
     expect(await countRows(pg, "conversations", "project_id = $1", [mine])).toBe(0);
+  });
+
+  it("refuses another visitor's conversation in the same project and saves nothing", async () => {
+    const projectId = await newProject();
+    const theirs = await save(projectId, null, "Hi", "Hello!", "visitor_other");
+    await expectRaise(save(projectId, theirs), "P0002", "conversation_not_found");
+    expect(await messages(theirs)).toHaveLength(2);
+    expect(await countRows(pg, "conversations", "project_id = $1", [projectId])).toBe(1);
+    // Its own visitor can still continue it.
+    expect(await save(projectId, theirs, "More?", "Yes.", "visitor_other")).toBe(theirs);
+    expect(await messages(theirs)).toHaveLength(4);
+  });
+
+  it("checks the visitor in the stored function body", async () => {
+    const { rows } = await pg.db.query<{ src: string }>(
+      "select prosrc as src from pg_proc where oid = 'public.save_chat_turn(uuid, text, text, text, uuid)'::regprocedure",
+    );
+    expect(rows[0].src).toMatch(/c\.visitor_id\s*=\s*p_visitor_id/);
   });
 
   it("refuses an unknown project", async () => {
