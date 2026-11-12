@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Widget test host</title>
+    <!--
+      A plain customer page for the Phase 2 end-to-end check (see README.md).
+      Serve it from a different origin than the app, e.g. `python3 -m http.server 8081`.
+      No framework, no build. The page's own styles are deliberately loud so any
+      leak into (or out of) the widget is obvious.
+    -->
+    <style>
+      body { font: 16px/1.5 Georgia, serif; color: #1a3d1a; background: #f6f1e7; margin: 0; padding: 32px; }
+      main { max-width: 640px; }
+      textarea { width: 100%; min-height: 96px; font: 13px/1.4 monospace; }
+      button { background: #ffd400; border: 3px solid #1a3d1a; padding: 8px 16px; font: inherit; cursor: pointer; }
+      #status { margin-top: 12px; font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Acme Plumbing (test host)</h1>
+      <p>This page stands in for a customer's website. Paste the snippet from the dashboard's Install tab and load it.</p>
+      <label for="snippet">Snippet</label>
+      <textarea id="snippet" spellcheck="false" placeholder='&lt;script src="https://…/widget.js" data-key="pk_…" async&gt;&lt;/script&gt;'></textarea>
+      <p><button id="load" type="button">Load widget</button></p>
+      <p id="status" role="status"></p>
+    </main>
+    <script>
+      // Inserts the pasted <script> tag exactly as given (src + every attribute),
+      // the way it would run if pasted into the page's HTML. Only <script> tags
+      // with a src are accepted; inline code is ignored.
+      (function () {
+        var textarea = document.getElementById("snippet");
+        var status = document.getElementById("status");
+
+        function load(snippet) {
+          var doc = new DOMParser().parseFromString(snippet, "text/html");
+          var parsed = doc.querySelector("script[src]");
+          if (!parsed) {
+            status.textContent = "No <script src=…> found in the snippet.";
+            return;
+          }
+          var script = document.createElement("script");
+          for (var i = 0; i < parsed.attributes.length; i++) {
+            script.setAttribute(parsed.attributes[i].name, parsed.attributes[i].value);
+          }
+          script.onload = function () { status.textContent = "Loaded " + script.src; };
+          script.onerror = function () { status.textContent = "Failed to load " + script.src; };
+          document.body.appendChild(script);
+          status.textContent = "Loading " + script.src + " …";
+        }
+
+        document.getElementById("load").addEventListener("click", function () {
+          load(textarea.value);
+        });
+
+        // Automation: host.html#snippet=<encodeURIComponent(snippet)> loads it on open.
+        var match = location.hash.match(/^#snippet=(.*)$/);
+        if (match) {
+          textarea.value = decodeURIComponent(match[1]);
+          load(textarea.value);
+        }
+      })();
+    </script>
+  </body>
+</html>
