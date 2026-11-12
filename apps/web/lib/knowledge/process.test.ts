@@ -10,9 +10,9 @@ type Reply = { data?: unknown; error?: unknown };
 
 /** A fake service client that records each query and answers from `reply`. */
 const fake = vi.hoisted(() => {
-  const state = {
-    calls: [] as Call[],
-    reply: (_call: Call): Reply => ({ data: [{ id: "s1" }], error: null }),
+  const state: { calls: Call[]; reply: (call: Call) => Reply } = {
+    calls: [],
+    reply: () => ({ data: [{ id: "s1" }], error: null }),
   };
   const query = (table: string, op: string, payload?: unknown) => {
     const call: Call = { table, op, payload, filters: [] };
@@ -40,7 +40,8 @@ const fake = vi.hoisted(() => {
   };
   return { state, client };
 });
-vi.mock("../supabase/service", () => ({ createServiceClient: () => fake.client }));
+const createServiceClient = vi.hoisted(() => vi.fn());
+vi.mock("../supabase/service", () => ({ createServiceClient }));
 
 const { processSource, CHUNK_INSERT_BATCH_SIZE } = await import("./process");
 
@@ -52,6 +53,8 @@ let errorLog: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   fake.state.calls = [];
   fake.state.reply = ok;
+  createServiceClient.mockReset();
+  createServiceClient.mockReturnValue(fake.client);
   embedTexts.mockReset();
   embedTexts.mockImplementation((texts) => Promise.resolve(texts.map(() => [0.1, 0.2])));
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -161,7 +164,41 @@ describe("processSource", () => {
     embedTexts.mockRejectedValue(new Error("boom"));
     fake.state.reply = () => ({ data: null, error: { name: "PostgrestError", message: "db down" } });
     await expect(processSource(input)).resolves.toEqual({ status: "failed" });
-    expect(errorLog).toHaveBeenCalledWith("Knowledge processing cleanup failed", expect.objectContaining({ sourceId: "s1" }));
+    expect(errorLog).toHaveBeenCalledWith(
+      "Knowledge processing cleanup incomplete",
+      expect.objectContaining({ step: "delete chunks", sourceId: "s1" }),
+    );
     expectTextNotLogged();
+  });
+
+  it("still marks the source failed when deleting its chunks fails", async () => {
+    embedTexts.mockRejectedValue(new Error("boom"));
+    fake.state.reply = (call) =>
+      call.op === "delete" ? { data: null, error: { name: "PostgrestError", message: "delete failed" } } : ok();
+    await expect(processSource(input)).resolves.toEqual({ status: "failed" });
+    expect(ops()).toEqual(["delete knowledge_chunks", "update knowledge_sources"]);
+    expect(statusUpdates()).toEqual([{ status: "failed" }]);
+    expect(errorLog).toHaveBeenCalledWith(
+      "Knowledge processing cleanup incomplete",
+      expect.objectContaining({ step: "delete chunks", error: expect.objectContaining({ message: "delete failed" }) }),
+    );
+    expect(errorLog).not.toHaveBeenCalledWith(
+      "Knowledge processing cleanup incomplete",
+      expect.objectContaining({ step: "mark failed" }),
+    );
+  });
+
+  it("returns failed, without rejecting, when the service client can't be created", async () => {
+    createServiceClient.mockImplementation(() => {
+      throw new Error("Missing env var");
+    });
+    await expect(processSource(input)).resolves.toEqual({ status: "failed" });
+    expect(embedTexts).not.toHaveBeenCalled();
+    expect(fake.state.calls).toEqual([]);
+    expect(errorLog).toHaveBeenCalledWith("Knowledge processing failed", {
+      projectId: "p1",
+      sourceId: "s1",
+      error: { name: "Error", message: "Missing env var" },
+    });
   });
 });

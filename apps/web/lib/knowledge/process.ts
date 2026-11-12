@@ -18,8 +18,10 @@ export type ProcessSourceResult = { status: "ready"; chunkCount: number } | { st
  * owns the project (project.md §9).
  */
 export async function processSource({ projectId, sourceId, text }: ProcessSourceInput): Promise<ProcessSourceResult> {
-  const db = createServiceClient();
+  // Created inside the try: a missing env var must still return `failed`, not reject.
+  let db: ServiceClient | undefined;
   try {
+    db = createServiceClient();
     const chunks = chunkText(text);
     if (chunks.length === 0) throw new Error("Source has no text to chunk");
 
@@ -52,31 +54,39 @@ export async function processSource({ projectId, sourceId, text }: ProcessSource
     return { status: "ready", chunkCount: chunks.length };
   } catch (err) {
     console.error("Knowledge processing failed", { projectId, sourceId, error: describeError(err) });
-    await markFailed(db, projectId, sourceId);
+    // No client means nothing was written, and no way to set the status either.
+    if (db) await markFailed(db, projectId, sourceId);
     return { status: "failed" };
   }
 }
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
-/** Deletes partial chunks, then sets status `failed`. Best effort: logs, never throws. */
+/**
+ * Deletes partial chunks and sets status `failed`. The two steps run independently, so
+ * a failed delete still marks the source failed. Best effort: logs, never throws.
+ */
 async function markFailed(db: ServiceClient, projectId: string, sourceId: string): Promise<void> {
-  try {
-    const { error: deleteError } = await db
-      .from("knowledge_chunks")
-      .delete()
-      .eq("source_id", sourceId)
-      .eq("project_id", projectId);
-    if (deleteError) throw deleteError;
+  await bestEffort("delete chunks", projectId, sourceId, () =>
+    db.from("knowledge_chunks").delete().eq("source_id", sourceId).eq("project_id", projectId),
+  );
+  await bestEffort("mark failed", projectId, sourceId, () =>
+    db.from("knowledge_sources").update({ status: "failed" }).eq("id", sourceId).eq("project_id", projectId),
+  );
+}
 
-    const { error: updateError } = await db
-      .from("knowledge_sources")
-      .update({ status: "failed" })
-      .eq("id", sourceId)
-      .eq("project_id", projectId);
-    if (updateError) throw updateError;
+/** Runs one cleanup query; logs (never throws) if it errors or rejects. */
+async function bestEffort(
+  step: string,
+  projectId: string,
+  sourceId: string,
+  run: () => PromiseLike<{ error: unknown }>,
+): Promise<void> {
+  try {
+    const { error } = await run();
+    if (error) throw error;
   } catch (err) {
-    console.error("Knowledge processing cleanup failed", { projectId, sourceId, error: describeError(err) });
+    console.error("Knowledge processing cleanup incomplete", { step, projectId, sourceId, error: describeError(err) });
   }
 }
 
