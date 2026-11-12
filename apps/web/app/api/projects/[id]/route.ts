@@ -6,7 +6,7 @@ import {
 } from "@askwell/shared";
 import type { NextRequest } from "next/server";
 import { errorResponse } from "../../../../lib/api/errors";
-import { removeObjects } from "../../../../lib/knowledge/storage";
+import { removeProjectFiles } from "../../../../lib/knowledge/storage";
 import { currentUserId, PROJECT_COLUMNS, projectFromRow, readJsonBody } from "../../../../lib/projects";
 import { createOwnerClient } from "../../../../lib/supabase/owner";
 
@@ -74,9 +74,10 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext<"/api/proj
   if (data.length === 0) return errorResponse("not_found", NOT_FOUND);
 
   // The owner owned the project (the delete returned it), so the service client may
-  // remove its files. A failed remove is logged with the keys for retry.
+  // remove its files: the keys read above plus anything else under its folder (an
+  // upload reserved in between). A failed remove is logged with the keys for retry.
   const keys = files.flatMap((f) => (f.storage_key ? [f.storage_key] : []));
-  await removeObjects(keys, `deleted project ${params.data.id}`);
+  await removeProjectFiles(params.data.id, keys);
 
   const body: OkResponse = { ok: true };
   return Response.json(body);

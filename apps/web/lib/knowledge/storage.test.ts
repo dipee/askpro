@@ -6,12 +6,14 @@ vi.mock("server-only", () => ({}));
 const bucket = vi.hoisted(() => ({
   createSignedUploadUrl: vi.fn(),
   download: vi.fn(),
+  list: vi.fn(),
   remove: vi.fn(),
 }));
 const from = vi.hoisted(() => vi.fn(() => bucket));
 vi.mock("../supabase/service", () => ({ createServiceClient: () => ({ storage: { from } }) }));
 
-const { KNOWLEDGE_BUCKET, newStorageKey, createUploadUrl, downloadObject, removeObjects } = await import("./storage");
+const { KNOWLEDGE_BUCKET, newStorageKey, createUploadUrl, downloadObject, listProjectKeys, removeObjects, removeProjectFiles } =
+  await import("./storage");
 
 const PID = "11111111-1111-4111-8111-111111111111";
 let errorLog: ReturnType<typeof vi.spyOn>;
@@ -51,18 +53,56 @@ describe("downloadObject", () => {
     await expect(downloadObject("k")).resolves.toEqual(new Uint8Array([1, 2, 3]));
   });
 
-  it.each([
-    ["a 404 status", { status: 404, message: "x" }],
-    ["statusCode 404 in the body (Storage's HTTP 400)", { status: 400, statusCode: "404", message: "x" }],
-    ["an 'Object not found' message", { message: "Object not found" }],
-  ])("returns null for a missing object: %s", async (_, error) => {
-    bucket.download.mockResolvedValue({ data: null, error });
+  // Shapes as dev Storage returns them (checked against the real bucket).
+  it("returns null for a missing object (code NoSuchKey)", async () => {
+    bucket.download.mockResolvedValue({
+      data: null,
+      error: { name: "StorageApiError", status: 400, statusCode: "404", code: "NoSuchKey", message: "Object not found" },
+    });
     await expect(downloadObject("k")).resolves.toBeNull();
   });
 
-  it("throws on other errors (a bare 400 isn't 'missing')", async () => {
-    bucket.download.mockResolvedValue({ data: null, error: { status: 400, message: "bad request" } });
-    await expect(downloadObject("k")).rejects.toThrow("bad request");
+  it.each([
+    ["a missing bucket (same 404 shape, code NoSuchBucket)", { status: 400, statusCode: "404", code: "NoSuchBucket", message: "Bucket not found" }],
+    ["a missing tenant", { status: 400, statusCode: "404", code: "TenantNotFound", message: "Tenant not found" }],
+    ["any other error", { status: 400, message: "bad request" }],
+  ])("throws, not null, for %s", async (_, error) => {
+    bucket.download.mockResolvedValue({ data: null, error });
+    await expect(downloadObject("k")).rejects.toThrow(error.message);
+  });
+});
+
+describe("listProjectKeys", () => {
+  it("lists every key under the project's folder, page by page", async () => {
+    const page = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ name: `f${from + i}.pdf` }));
+    bucket.list.mockResolvedValueOnce({ data: page(1000), error: null }).mockResolvedValueOnce({ data: page(2, 1000), error: null });
+    const keys = await listProjectKeys(PID);
+    expect(keys).toHaveLength(1002);
+    expect(keys[1001]).toBe(`${PID}/f1001.pdf`);
+    expect(bucket.list).toHaveBeenNthCalledWith(1, PID, { limit: 1000, offset: 0 });
+    expect(bucket.list).toHaveBeenNthCalledWith(2, PID, { limit: 1000, offset: 1000 });
+  });
+});
+
+describe("removeProjectFiles", () => {
+  it("also removes a file whose source was reserved after the keys were read", async () => {
+    // The route read [a.pdf]; meanwhile an upload reserved late.md, and the cascade
+    // deleted its row with the project. Only the folder listing knows about it.
+    bucket.list.mockResolvedValue({ data: [{ name: "a.pdf" }, { name: "late.md" }], error: null });
+    bucket.remove.mockResolvedValue({ data: [], error: null });
+    await expect(removeProjectFiles(PID, [`${PID}/a.pdf`])).resolves.toBe(true);
+    expect(bucket.remove).toHaveBeenCalledWith([`${PID}/a.pdf`, `${PID}/late.md`]);
+  });
+
+  it("removes the known keys when listing fails", async () => {
+    bucket.list.mockResolvedValue({ data: null, error: { message: "list down" } });
+    bucket.remove.mockResolvedValue({ data: [], error: null });
+    await expect(removeProjectFiles(PID, [`${PID}/a.pdf`])).resolves.toBe(true);
+    expect(bucket.remove).toHaveBeenCalledWith([`${PID}/a.pdf`]);
+    expect(errorLog).toHaveBeenCalledWith("Knowledge storage list failed; removing the known keys only", {
+      projectId: PID,
+      error: "Listing the project's files failed: list down",
+    });
   });
 });
 

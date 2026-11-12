@@ -62,7 +62,11 @@ export async function POST(
   /** Refuses the file: deletes it and its source, so it no longer counts toward the limit. */
   const refuse = async (message: string): Promise<Response> => {
     const { error } = await db.from("knowledge_sources").delete().eq("id", sourceId).eq("project_id", projectId);
-    if (error) console.error("knowledge finalize: deleting refused source failed", { sourceId, error: error.message });
+    if (error) {
+      // Keep the file: the source still exists and points at it.
+      console.error("knowledge finalize: deleting refused source failed", { sourceId, error: error.message });
+      return INTERNAL();
+    }
     await removeObjects([key], "refused upload");
     return errorResponse("validation", message);
   };

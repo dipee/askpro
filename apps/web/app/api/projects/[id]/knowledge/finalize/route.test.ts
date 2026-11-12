@@ -205,6 +205,15 @@ describe("POST /api/projects/:id/knowledge/finalize", () => {
     });
   });
 
+  it("keeps the file (500) when deleting a refused source fails", async () => {
+    claim(claimed("pdf"));
+    service.state.results.push({ data: null, error: { message: "db down" } });
+    storage.downloadObject.mockResolvedValue(utf8("MZ not a pdf"));
+    const res = await post(PID, { sourceId: SID });
+    expect(res.status).toBe(500);
+    expect(storage.removeObjects).not.toHaveBeenCalled();
+  });
+
   it("marks the source failed (keeping it) when the download errors", async () => {
     claim(claimed("pdf"));
     storage.downloadObject.mockRejectedValue(new Error("storage down"));

@@ -32,6 +32,37 @@ export async function downloadObject(key: string): Promise<Uint8Array | null> {
   return new Uint8Array(await data.arrayBuffer());
 }
 
+/** Page size for listing a project's folder (Pro allows 25 sources). */
+const LIST_PAGE = 1000;
+
+/** Every object key under `<projectId>/`. */
+export async function listProjectKeys(projectId: string): Promise<string[]> {
+  const keys: string[] = [];
+  for (let offset = 0; ; offset += LIST_PAGE) {
+    const { data, error } = await createServiceClient()
+      .storage.from(KNOWLEDGE_BUCKET)
+      .list(projectId, { limit: LIST_PAGE, offset });
+    if (error) throw new Error(`Listing the project's files failed: ${error.message}`);
+    keys.push(...data.map((o) => `${projectId}/${o.name}`));
+    if (data.length < LIST_PAGE) return keys;
+  }
+}
+
+/**
+ * After a project is deleted: removes the files its sources pointed at, plus anything
+ * else under `<projectId>/` (e.g. an upload reserved after `knownKeys` was read).
+ * Best effort: never throws; failures are logged with the keys.
+ */
+export async function removeProjectFiles(projectId: string, knownKeys: readonly string[]): Promise<boolean> {
+  let listed: string[] = [];
+  try {
+    listed = await listProjectKeys(projectId);
+  } catch (err) {
+    console.error("Knowledge storage list failed; removing the known keys only", { projectId, error: errorMessage(err) });
+  }
+  return removeObjects([...knownKeys, ...listed], `deleted project ${projectId}`);
+}
+
 /**
  * Removes objects from the bucket. Best effort: never throws. On failure it logs the
  * keys so they can be removed later, and returns false. Missing objects count as removed.
@@ -60,10 +91,10 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/**
+ * True only for a missing object. Storage answers HTTP 400 with `statusCode: "404"` for
+ * several things (a missing bucket too), so only the object-specific code counts.
+ */
 function isNotFound(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { status?: unknown; statusCode?: unknown; message?: unknown; name?: unknown };
-  // Storage answers a missing object with HTTP 400 and `statusCode: "404"` in the body.
-  if (Number(e.status) === 404 || Number(e.statusCode) === 404) return true;
-  return typeof e.message === "string" && /not.?found/i.test(e.message);
+  return !!error && typeof error === "object" && (error as { code?: unknown }).code === "NoSuchKey";
 }
