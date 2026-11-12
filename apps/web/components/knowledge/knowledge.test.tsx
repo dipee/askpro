@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeSource } from "@askwell/shared";
+import type { RowState } from "./knowledge-views";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
@@ -18,7 +19,7 @@ const source = (n: number, patch: Partial<KnowledgeSource> = {}): KnowledgeSourc
   ...patch,
 });
 const noop = () => {};
-const IDLE = { confirming: false, deleting: false, error: null };
+const IDLE: RowState = { confirming: false, deleting: false, error: null };
 
 /** The add buttons as rendered, with whether each is disabled. */
 function addButtons(html: string) {
@@ -129,7 +130,7 @@ describe("KnowledgeManager: list", () => {
 
 describe("SourceList: delete", () => {
   const item = { key: "a", id: "a", title: "Manual", type: "pdf" as const, status: "Ready" as const, createdAt: null };
-  const list = (state: typeof IDLE) =>
+  const list = (state: RowState) =>
     renderToStaticMarkup(
       <SourceList items={[item]} rowState={() => state} onStartDelete={noop} onConfirmDelete={noop} onCancelDelete={noop} />,
     );
