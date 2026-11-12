@@ -84,3 +84,38 @@ export async function expectPgError(promise: Promise<unknown>, code: string) {
   expect(error, `expected Postgres error ${code}, but the statement succeeded`).not.toBeNull();
   expect((error as { code?: string }).code).toBe(code);
 }
+
+/**
+ * A 1536-dim vector literal (pass as a parameter, cast to extensions.vector): `weights`
+ * fill the first dimensions, the rest are 0. Equal weights point the same way.
+ */
+export function vec(...weights: number[]): string {
+  const v = new Array<number>(1536).fill(0);
+  weights.forEach((w, i) => (v[i] = w));
+  return `[${v.join(",")}]`;
+}
+
+/** Expects a Postgres error with this code and message (a function's `raise`). */
+export async function expectRaise(promise: Promise<unknown>, code: string, message: string) {
+  const error = await promise.then(
+    () => null,
+    (e: unknown) => e as { code?: string; message?: string },
+  );
+  expect(error, `expected ${message}, but the call succeeded`).not.toBeNull();
+  expect({ code: error?.code, message: error?.message }).toEqual({ code, message });
+}
+
+/** Function privileges and settings, for the §9 checks. */
+export async function functionSecurity(pg: SupabasePglite, signature: string) {
+  const { rows: can } = await pg.db.query<{ role: string; can: boolean }>(
+    `select r as role, has_function_privilege(r, $1, 'execute') as can
+     from unnest(array['anon', 'authenticated', 'service_role']) as r`,
+    [signature],
+  );
+  const { rows } = await pg.db.query<{ acl: string; secdef: boolean; config: string[] }>(
+    `select proacl::text as acl, prosecdef as secdef, proconfig as config
+     from pg_proc where oid = $1::regprocedure`,
+    [signature],
+  );
+  return { can, ...rows[0] };
+}
