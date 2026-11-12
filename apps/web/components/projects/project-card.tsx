@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Plan, Project } from "@askwell/shared";
 import { deleteProject, renameProject } from "./api";
-import { ProjectCardView, type CardMode } from "./project-card-view";
+import { ProjectCardView, type CardMode, type ReturnFocus } from "./project-card-view";
 
 /** A project card with in-page rename and delete. Refreshes the list after each. */
 export function ProjectCard({ project, plan }: { project: Project; plan: Plan }) {
@@ -13,8 +13,11 @@ export function ProjectCard({ project, plan }: { project: Project; plan: Plan })
   const [draftName, setDraftName] = useState(project.name);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [returnFocus, setReturnFocus] = useState<ReturnFocus>(null);
 
   function reset() {
+    // Back to view: put focus on the button that opened the step we're leaving.
+    setReturnFocus(mode === "confirm-delete" ? "delete" : mode === "rename" ? "rename" : null);
     setMode("view");
     setDraftName(project.name);
     setError(null);
@@ -46,6 +49,7 @@ export function ProjectCard({ project, plan }: { project: Project; plan: Plan })
       project={project}
       plan={plan}
       mode={mode}
+      returnFocus={returnFocus}
       draftName={draftName}
       error={error}
       pending={pending}

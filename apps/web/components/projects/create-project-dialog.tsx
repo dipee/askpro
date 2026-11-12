@@ -1,4 +1,6 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useEffect, useRef, type FormEvent } from "react";
 import Link from "next/link";
 import { MAX_PROJECT_NAME_CHARS } from "@askwell/shared";
 import { Button } from "../ui/button";
@@ -22,19 +24,27 @@ export function CreateProjectDialog({ name, error, pending, onNameChange, onSubm
     onSubmit();
   }
 
+  const ref = useRef<HTMLDialogElement>(null);
+
+  // showModal() makes the rest of the page inert: Tab stays in the dialog and
+  // Escape fires "cancel". The trigger restores focus on close.
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => dialog?.close();
+  }, []);
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center"
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && !pending) onClose();
+    <dialog
+      ref={ref}
+      aria-labelledby="new-project-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!pending) onClose();
       }}
+      className="mx-auto mb-4 mt-auto w-[calc(100%-2rem)] max-w-md bg-transparent p-0 backdrop:bg-black/30 sm:my-auto"
     >
-      <GlassPanel
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-project-title"
-        className="w-full max-w-md bg-white/90 p-6"
-      >
+      <GlassPanel className="bg-white/90 p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div>
             <h2 id="new-project-title" className="text-lg font-semibold tracking-tight">
@@ -80,6 +90,6 @@ export function CreateProjectDialog({ name, error, pending, onNameChange, onSubm
           </div>
         </form>
       </GlassPanel>
-    </div>
+    </dialog>
   );
 }

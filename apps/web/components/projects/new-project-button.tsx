@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Plan } from "@askwell/shared";
 import { Button } from "../ui/button";
@@ -15,11 +15,13 @@ export function NewProjectButton({ plan, variant = "primary" }: { plan: Plan; va
   const [name, setName] = useState("");
   const [error, setError] = useState<CreateError | null>(null);
   const [pending, setPending] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   function close() {
     setOpen(false);
     setName("");
     setError(null);
+    triggerRef.current?.focus();
   }
 
   async function submit() {
@@ -41,7 +43,7 @@ export function NewProjectButton({ plan, variant = "primary" }: { plan: Plan; va
 
   return (
     <>
-      <Button variant={variant} onClick={() => setOpen(true)}>
+      <Button ref={triggerRef} variant={variant} onClick={() => setOpen(true)}>
         New project
       </Button>
       {open ? (

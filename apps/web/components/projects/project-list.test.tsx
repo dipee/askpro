@@ -96,6 +96,24 @@ describe("ProjectCardView", () => {
     expect(html).toContain(">Save</button>");
   });
 
+  it("delete confirm puts focus on Cancel", () => {
+    const html = renderToStaticMarkup(<ProjectCardView {...cardProps} mode="confirm-delete" />);
+    expect(html).toMatch(/<button[^>]*autofocus=""[^>]*>Cancel<\/button>/i);
+  });
+
+  it.each([
+    ["delete", "Delete"],
+    ["rename", "Rename"],
+  ] as const)("after cancel, focus returns to %s", (returnFocus, label) => {
+    const html = renderToStaticMarkup(<ProjectCardView {...cardProps} mode="view" returnFocus={returnFocus} />);
+    const focused = [...html.matchAll(/<button[^>]*autofocus=""[^>]*>([^<]+)<\/button>/gi)].map((m) => m[1]);
+    expect(focused).toEqual([label]);
+  });
+
+  it("view mode with no returnFocus focuses nothing", () => {
+    expect(renderToStaticMarkup(<ProjectCardView {...cardProps} mode="view" />)).not.toMatch(/autofocus/i);
+  });
+
   it("shows an error from the server", () => {
     const html = renderToStaticMarkup(<ProjectCardView {...cardProps} mode="view" error="Project not found." />);
     expect(html).toMatch(/role="alert"[^>]*>Project not found\.</);
@@ -129,10 +147,9 @@ describe("CreateProjectDialog", () => {
     expect(html).not.toContain("/dashboard/billing");
   });
 
-  it("is a labelled modal dialog with the shared name limit", () => {
+  it("is a native <dialog> (opened with showModal) with the shared name limit", () => {
     const html = dialog(null);
-    expect(html).toContain('role="dialog"');
-    expect(html).toContain('aria-modal="true"');
+    expect(html).toMatch(/^<dialog[^>]*aria-labelledby="new-project-title"/);
     expect(html).toMatch(/<input[^>]*maxLength="60"/);
   });
 });

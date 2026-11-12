@@ -33,6 +33,15 @@ describe("projects API client", () => {
     expect(await deleteProject("p1")).toEqual({ ok: false, code: "not_found", message: "Project not found." });
   });
 
+  it("a 2xx whose body can't be read or lacks the project is an error, not a crash", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{\"proj", { status: 201 })));
+    expect(await createProject("Desk")).toEqual({ ok: false, code: "internal", message: "Something went wrong. Please try again." });
+    vi.stubGlobal("fetch", respond(200, { unexpected: true }));
+    expect(await renameProject("p1", "New")).toMatchObject({ ok: false, code: "internal" });
+    vi.stubGlobal("fetch", respond(200, null));
+    expect(await createProject("Desk")).toMatchObject({ ok: false, code: "internal" });
+  });
+
   it("handles a network failure and a non-JSON error body", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("offline"); }));
     expect(await deleteProject("p1")).toMatchObject({ ok: false, code: "network" });

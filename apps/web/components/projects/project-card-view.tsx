@@ -7,10 +7,15 @@ import { formatCreated, truncateKey, usageLabel } from "./format";
 
 export type CardMode = "view" | "rename" | "confirm-delete";
 
+/** Which action button gets focus when the card returns to view mode (after a cancel). */
+export type ReturnFocus = "rename" | "delete" | null;
+
 export type ProjectCardViewProps = {
   project: Project;
   plan: Plan;
   mode: CardMode;
+  /** Focus this button when the card is back in view mode. */
+  returnFocus?: ReturnFocus;
   draftName: string;
   error: string | null;
   pending: boolean;
@@ -24,7 +29,7 @@ export type ProjectCardViewProps = {
 
 /** One project in the list. Rename and delete happen inside the card. */
 export function ProjectCardView(props: ProjectCardViewProps) {
-  const { project, plan, mode, draftName, error, pending } = props;
+  const { project, plan, mode, returnFocus = null, draftName, error, pending } = props;
   const href = `/dashboard/projects/${project.id}`;
 
   function submitRename(event: FormEvent) {
@@ -90,7 +95,8 @@ export function ProjectCardView(props: ProjectCardViewProps) {
             <Button onClick={props.onConfirmDelete} disabled={pending}>
               {pending ? "Deleting…" : "Delete project"}
             </Button>
-            <Button variant="ghost" onClick={props.onCancel} disabled={pending}>
+            {/* Focus moves here when the confirm opens (non-modal, inline). */}
+            <Button variant="ghost" onClick={props.onCancel} disabled={pending} autoFocus>
               Cancel
             </Button>
           </div>
@@ -105,10 +111,10 @@ export function ProjectCardView(props: ProjectCardViewProps) {
           >
             Open
           </Link>
-          <Button variant="secondary" onClick={props.onStartRename}>
+          <Button variant="secondary" onClick={props.onStartRename} autoFocus={returnFocus === "rename"}>
             Rename
           </Button>
-          <Button variant="ghost" onClick={props.onStartDelete}>
+          <Button variant="ghost" onClick={props.onStartDelete} autoFocus={returnFocus === "delete"}>
             Delete
           </Button>
         </div>
