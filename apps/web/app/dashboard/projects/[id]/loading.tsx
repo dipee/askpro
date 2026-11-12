@@ -1,3 +1,5 @@
+// Wraps this segment's tab pages only. The layout (which runs the ownership check and
+// notFound()) renders before this boundary, so an unknown project is a real 404.
 import { GlassPanel } from "../../../../components/ui/glass-panel";
 import { Skeleton, Spinner } from "../../../../components/ui/spinner";
 

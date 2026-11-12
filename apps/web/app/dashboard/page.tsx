@@ -64,6 +64,9 @@ async function Projects() {
   );
 }
 
+// No app/dashboard/loading.tsx on purpose: it would wrap /dashboard/projects/[id] too,
+// so its notFound() would arrive after a 200 had been streamed. This page's own
+// Suspense below is its loading state.
 export default async function ProjectsPage() {
   await auth.protect();
   return (
