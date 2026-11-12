@@ -4,7 +4,8 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { EMBED_MESSAGE_TYPES, type WidgetConfig } from "@askwell/shared";
 import { Spinner } from "@/components/ui/spinner";
 import { ChatUnavailable } from "./chat-unavailable";
-import { chatReducer, initialChatState, MOCK_REPLY, MOCK_REPLY_DELAY_MS, newMessageId } from "./chat-state";
+import { createChatSession, type ChatSession } from "./chat-api";
+import { chatReducer, initialChatState, newMessageId } from "./chat-state";
 import { ChatView } from "./chat-view";
 import { loadWidgetConfig } from "./load-config";
 import { createParentMessageHandler, postToParent } from "./parent-messaging";
@@ -18,7 +19,8 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
   const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
   const [chat, dispatch] = useReducer(chatReducer, initialChatState);
   const [draft, setDraft] = useState("");
-  const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const session = useRef<ChatSession | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
     let active = true;
@@ -31,9 +33,9 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
   }, [publicKey]);
 
   useEffect(() => {
-    // Phase 3 sends this with each chat request.
-    getVisitorId(() => window.localStorage);
-  }, []);
+    const storage = () => window.localStorage;
+    session.current = createChatSession({ publicKey, visitorId: getVisitorId(storage), storage });
+  }, [publicKey]);
 
   useEffect(() => {
     // Only the host page's origin may talk to the panel. No loader → panel
@@ -43,8 +45,11 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
     return () => window.removeEventListener("message", handler);
   }, [parentOrigin]);
 
-  useEffect(() => () => {
-    if (replyTimer.current) clearTimeout(replyTimer.current);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   const close = useCallback(() => {
@@ -60,14 +65,14 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
     return () => window.removeEventListener("keydown", onKey);
   }, [close]);
 
-  const send = () => {
+  const send = async () => {
     const text = draft.trim();
-    if (!text || chat.typing) return;
+    if (!text || chat.typing || !session.current) return;
     dispatch({ type: "send", id: newMessageId(), text });
     setDraft("");
-    replyTimer.current = setTimeout(() => {
-      dispatch({ type: "reply", id: newMessageId(), text: MOCK_REPLY });
-    }, MOCK_REPLY_DELAY_MS);
+    const outcome = await session.current.send(text);
+    if (!mounted.current) return;
+    dispatch(outcome.ok ? { type: "reply", id: newMessageId(), text: outcome.reply } : { type: "error", message: outcome.error });
   };
 
   if (configState.status === "loading") {
@@ -85,9 +90,10 @@ export function EmbedPanel({ publicKey, parentOrigin }: { publicKey: string; par
       showBadge={configState.config.showBadge}
       messages={chat.messages}
       typing={chat.typing}
+      error={chat.error}
       draft={draft}
       onDraftChange={setDraft}
-      onSend={send}
+      onSend={() => void send()}
       onClose={close}
     />
   );
