@@ -27,8 +27,15 @@ export function resolveTheme(choice: ThemeChoice, systemDark: boolean): Resolved
   return choice;
 }
 
-/** The stored choice. Storage can throw (blocked, private mode): then System. */
+/**
+ * The choice made in this tab when storage refused it (blocked, private mode, full).
+ * It wins over storage until a later write succeeds, so the picker and <html> agree.
+ */
+let unsavedChoice: ThemeChoice | null = null;
+
+/** The current choice: an unsaved one from this tab, else the stored one. Storage can throw: then System. */
 export function readThemeChoice(): ThemeChoice {
+  if (unsavedChoice !== null) return unsavedChoice;
   try {
     return parseThemeChoice(window.localStorage.getItem(THEME_STORAGE_KEY));
   } catch {
@@ -36,13 +43,15 @@ export function readThemeChoice(): ThemeChoice {
   }
 }
 
-/** Stores the choice (best effort) and tells this tab's listeners. */
+/** Stores the choice (best effort; kept in memory if storage refuses) and tells this tab's listeners. */
 export function writeThemeChoice(choice: ThemeChoice): void {
   try {
     if (choice === "system") window.localStorage.removeItem(THEME_STORAGE_KEY);
     else window.localStorage.setItem(THEME_STORAGE_KEY, choice);
+    unsavedChoice = null;
   } catch {
-    // Not persisted; the choice still applies until reload.
+    // Not persisted: keep it for this tab until reload.
+    unsavedChoice = choice;
   }
   applyTheme(choice);
   window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: choice }));

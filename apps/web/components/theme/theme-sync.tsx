@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { DARK_QUERY, applyTheme } from "../../lib/theme";
+import { DARK_QUERY, applyTheme, readThemeChoice } from "../../lib/theme";
 import { useThemeChoice } from "./use-theme-choice";
 
 /**
@@ -13,8 +13,12 @@ export function ThemeSync() {
   const choice = useThemeChoice();
 
   useEffect(() => {
-    applyTheme(choice);
-    if (choice !== "system") return;
+    // Read the store, not `choice`: on the hydration render `choice` is the server
+    // snapshot ("system"), and applying it would undo the head script for a frame.
+    // `choice` stays a dependency so every later change re-runs this.
+    const current = readThemeChoice();
+    applyTheme(current);
+    if (current !== "system") return;
     let media: MediaQueryList;
     try {
       media = window.matchMedia(DARK_QUERY);

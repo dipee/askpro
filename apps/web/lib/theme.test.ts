@@ -128,11 +128,24 @@ describe("readThemeChoice / writeThemeChoice", () => {
     expect(f.attrs.theme).toBe("light");
   });
 
-  it("still applies the choice when storage throws, and reads back system", () => {
+  it("still applies the choice when storage throws, and reads it back from memory", () => {
     const f = fakeWindow({ storageThrows: true });
     stub(f);
     expect(() => writeThemeChoice("dark")).not.toThrow();
     expect(f.attrs.theme).toBe("dark");
+    expect(readThemeChoice()).toBe("dark");
+    expect(f.events.map((e) => e.type)).toEqual([THEME_CHANGE_EVENT]);
+
+    writeThemeChoice("light");
+    expect(readThemeChoice()).toBe("light");
+
+    // Once storage works again, a successful write drops the in-memory choice.
+    const g = fakeWindow({ stored: "dark" });
+    stub(g);
+    expect(readThemeChoice()).toBe("light");
+    writeThemeChoice("system");
     expect(readThemeChoice()).toBe("system");
+    g.store.set(THEME_STORAGE_KEY, "dark");
+    expect(readThemeChoice()).toBe("dark");
   });
 });
