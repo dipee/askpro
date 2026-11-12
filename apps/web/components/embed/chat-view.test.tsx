@@ -91,4 +91,22 @@ describe("auto-scroll", () => {
     expect(shouldAutoScroll(true, "bot")).toBe(true);
     expect(shouldAutoScroll(false, "bot")).toBe(false);
   });
+
+  it("shows an error notice as text, never HTML", () => {
+    const html = render({ error: "<b>That message can't be answered.</b>" });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("&lt;b&gt;That message can&#x27;t be answered.&lt;/b&gt;");
+    expect(html).not.toContain("<b>");
+  });
+
+  it("renders messages as text, never HTML", () => {
+    const html = render({ messages: [{ id: "1", role: "bot", text: "<img src=x onerror=alert(1)>" }] });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+
+  it("disables send for an over-long draft", () => {
+    const html = render({ draft: "x".repeat(MAX_CHAT_MESSAGE_CHARS + 1) });
+    expect(html).toMatch(/<button type="submit" disabled=""/);
+  });
 });

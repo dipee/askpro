@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chatReducer, initialChatState, MOCK_REPLY, newMessageId } from "./chat-state";
+import { chatReducer, initialChatState, newMessageId } from "./chat-state";
 
 describe("chatReducer", () => {
   it("send adds the visitor message and shows typing; reply adds the bot message and stops typing", () => {
     const sent = chatReducer(initialChatState, { type: "send", id: "1", text: "Hi" });
-    expect(sent).toEqual({ messages: [{ id: "1", role: "visitor", text: "Hi" }], typing: true });
+    expect(sent).toEqual({ messages: [{ id: "1", role: "visitor", text: "Hi" }], typing: true, error: null });
 
-    const replied = chatReducer(sent, { type: "reply", id: "2", text: MOCK_REPLY });
+    const replied = chatReducer(sent, { type: "reply", id: "2", text: "Hello!" });
     expect(replied.typing).toBe(false);
-    expect(replied.messages.at(-1)).toEqual({ id: "2", role: "bot", text: MOCK_REPLY });
+    expect(replied.messages.at(-1)).toEqual({ id: "2", role: "bot", text: "Hello!" });
+  });
+
+  it("error stops typing, keeps the messages and shows the notice until the next send", () => {
+    const sent = chatReducer(initialChatState, { type: "send", id: "1", text: "Hi" });
+    const failed = chatReducer(sent, { type: "error", message: "Too fast" });
+    expect(failed).toEqual({ messages: sent.messages, typing: false, error: "Too fast" });
+    expect(chatReducer(failed, { type: "send", id: "2", text: "Again" }).error).toBeNull();
   });
 });
 

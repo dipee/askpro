@@ -32,6 +32,8 @@ type ChatViewProps = {
   showBadge: boolean;
   messages: ChatMessage[];
   typing: boolean;
+  /** Friendly notice for the last failed send, or null. */
+  error?: string | null;
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
@@ -47,12 +49,13 @@ export function ChatView({
   showBadge,
   messages,
   typing,
+  error = null,
   draft,
   onDraftChange,
   onSend,
   onClose,
 }: ChatViewProps) {
-  const canSend = draft.trim().length > 0 && !typing;
+  const canSend = draft.trim().length > 0 && draft.length <= MAX_CHAT_MESSAGE_CHARS && !typing;
   const listRef = useRef<HTMLOListElement>(null);
   const nearBottom = useRef(true);
   const lastRole = messages.at(-1)?.role;
@@ -126,6 +129,10 @@ export function ChatView({
       </ol>
 
       <form onSubmit={submit} className="border-t border-glass-border p-3">
+        {/* Always mounted so screen readers announce a new error. Text only, never HTML. */}
+        <p role="alert" className="mb-2 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground empty:hidden">
+          {error}
+        </p>
         <div className="flex items-center gap-2">
           <label htmlFor="embed-input" className="sr-only">
             Message
