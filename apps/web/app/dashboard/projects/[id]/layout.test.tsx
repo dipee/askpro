@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  project: null as null | { id: string; name: string; publicKey: string },
   getOwnedProject: vi.fn(),
+  ensureAccount: vi.fn(),
   protect: vi.fn(async () => {}),
 }));
 
@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard/projects/11111111-1111-4111-8111-111111111111/install",
 }));
 vi.mock("../../../../lib/projects", () => ({ getOwnedProject: h.getOwnedProject }));
+vi.mock("../../../../lib/accounts", () => ({ ensureAccount: h.ensureAccount }));
 
 const { default: ProjectLayout } = await import("./layout");
 
@@ -26,7 +27,18 @@ const render = (id: string) =>
 
 beforeEach(() => {
   h.getOwnedProject.mockReset();
+  h.ensureAccount.mockReset();
+  h.ensureAccount.mockResolvedValue({ plan: "free" });
   h.protect.mockClear();
+});
+
+/** An owned project with `messagesUsed` counted in the current UTC month. */
+const project = (messagesUsed = 3) => ({
+  id: ID,
+  name: "<b>Desk</b>",
+  publicKey: "pk_1",
+  messagesUsed,
+  periodStart: new Date().toISOString(),
 });
 
 describe("project layout", () => {
@@ -48,11 +60,35 @@ describe("project layout", () => {
   });
 
   it("shows the back link, name (as text), tabs and the tab content for an owned project", async () => {
-    h.getOwnedProject.mockResolvedValue({ id: ID, name: "<b>Desk</b>", publicKey: "pk_1" });
+    h.getOwnedProject.mockResolvedValue(project());
     const html = await render(ID);
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain("&lt;b&gt;Desk&lt;/b&gt;");
     expect(html).toContain(`href="/dashboard/projects/${ID}/install"`);
+    expect(html).toContain("<p>child</p>");
+  });
+
+  it("shows this month's usage under the name, with the limit from the server-read plan", async () => {
+    h.getOwnedProject.mockResolvedValue(project(3));
+    h.ensureAccount.mockResolvedValue({ plan: "pro" });
+    const html = await render(ID);
+    expect(html).toContain("3 / 2,000 messages this month");
+    expect(html).not.toContain("Limit reached.");
+  });
+
+  it("shows the quota hint at the limit", async () => {
+    h.getOwnedProject.mockResolvedValue(project(100));
+    const html = await render(ID);
+    expect(html).toContain("100 / 100 messages this month");
+    expect(html).toContain("Limit reached.");
+  });
+
+  it("still renders the project when the plan can't be read", async () => {
+    h.getOwnedProject.mockResolvedValue(project());
+    h.ensureAccount.mockRejectedValue(new Error("db down"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const html = await render(ID);
+    expect(html).toContain("Usage is unavailable");
     expect(html).toContain("<p>child</p>");
   });
 });

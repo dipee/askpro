@@ -1,9 +1,11 @@
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { MAX_PROJECT_NAME_CHARS, type Plan, type Project } from "@askwell/shared";
+import { MAX_PROJECT_NAME_CHARS, type Project } from "@askwell/shared";
+import type { Usage } from "../../lib/usage";
 import { Button } from "../ui/button";
 import { GlassPanel } from "../ui/glass-panel";
-import { formatCreated, truncateKey, usageLabel } from "./format";
+import { UsageMeter } from "../usage/usage-meter";
+import { formatCreated, truncateKey } from "./format";
 
 export type CardMode = "view" | "rename" | "confirm-delete";
 
@@ -12,7 +14,8 @@ export type ReturnFocus = "rename" | "delete" | null;
 
 export type ProjectCardViewProps = {
   project: Project;
-  plan: Plan;
+  /** This month's usage, worked out on the server (lib/usage currentUsage). */
+  usage: Usage;
   mode: CardMode;
   /** Focus this button when the card is back in view mode. */
   returnFocus?: ReturnFocus;
@@ -29,7 +32,7 @@ export type ProjectCardViewProps = {
 
 /** One project in the list. Rename and delete happen inside the card. */
 export function ProjectCardView(props: ProjectCardViewProps) {
-  const { project, plan, mode, returnFocus = null, draftName, error, pending } = props;
+  const { project, usage, mode, returnFocus = null, draftName, error, pending } = props;
   const href = `/dashboard/projects/${project.id}`;
 
   function submitRename(event: FormEvent) {
@@ -74,15 +77,11 @@ export function ProjectCardView(props: ProjectCardViewProps) {
         </div>
       )}
 
-      <dl className="grid gap-1 text-sm">
-        <div>
-          <dt className="sr-only">Messages</dt>
-          <dd>{usageLabel(project.messagesUsed, plan)}</dd>
-        </div>
-        <div className="text-muted-foreground">
-          <dt className="inline">Created </dt>
-          <dd className="inline">{formatCreated(project.createdAt)}</dd>
-        </div>
+      <UsageMeter usage={usage} />
+
+      <dl className="text-sm text-muted-foreground">
+        <dt className="inline">Created </dt>
+        <dd className="inline">{formatCreated(project.createdAt)}</dd>
       </dl>
 
       {mode === "confirm-delete" ? (

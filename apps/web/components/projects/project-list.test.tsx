@@ -28,10 +28,13 @@ const PROJECTS: Project[] = [
   },
 ];
 
+/** Mid-November 2026, the month the fixtures' period_start is in. */
+const NOW = new Date("2026-11-12T12:00:00Z");
+
 const noop = () => {};
 const cardProps = {
   project: PROJECTS[0]!,
-  plan: "free" as const,
+  usage: { used: 12, limit: 100, ratio: 0.12, nearLimit: false, atLimit: false },
   draftName: "Help desk",
   error: null,
   pending: false,
@@ -45,7 +48,7 @@ const cardProps = {
 
 describe("ProjectList", () => {
   it("renders a card per project: name, truncated key, usage vs limit, created date, link", () => {
-    const html = renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="free" />);
+    const html = renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="free" now={NOW} />);
     expect(html).toContain(">Help desk</a>");
     expect(html).toContain('href="/dashboard/projects/11111111-1111-4111-8111-111111111111"');
     expect(html).toContain("pk_2cfb1e93…8c1a0f");
@@ -55,13 +58,27 @@ describe("ProjectList", () => {
   });
 
   it("renders project names as text, never HTML", () => {
-    const html = renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="free" />);
+    const html = renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="free" now={NOW} />);
     expect(html).toContain("&lt;b&gt;Docs&lt;/b&gt;");
     expect(html).not.toContain("<b>Docs");
   });
 
   it("uses the Pro limit for a Pro owner", () => {
-    expect(renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="pro" />)).toContain("12 / 2,000 messages");
+    expect(renderToStaticMarkup(<ProjectList projects={PROJECTS} plan="pro" now={NOW} />)).toContain("12 / 2,000 messages");
+  });
+
+  it("shows 0 once a new UTC month starts, before consume_message resets the row", () => {
+    const html = renderToStaticMarkup(
+      <ProjectList projects={[PROJECTS[0]!]} plan="free" now={new Date("2026-12-01T00:00:00Z")} />,
+    );
+    expect(html).toContain("0 / 100 messages this month");
+  });
+
+  it("shows the quota hint on a card at the limit", () => {
+    const full = { ...PROJECTS[0]!, messagesUsed: 100 };
+    const html = renderToStaticMarkup(<ProjectList projects={[full]} plan="free" now={NOW} />);
+    expect(html).toContain("100 / 100 messages this month");
+    expect(html).toContain("Limit reached.");
   });
 
   it("empty: keeps 'No projects yet' with an enabled New project button", () => {
