@@ -1,0 +1,22 @@
+06:46:23 Preview: https://askpro-whto-git-p3k-t08-phase3-e2e-dipeeinfo-1772s-projects.vercel.app
+06:46:23 Host page: http://172.17.0.5:8081/host.html (origin http://172.17.0.5:8081)
+06:46:23 Bypass cookie set
+06:46:27 PASS sign up → /dashboard (askwell-e2e-1794465983817+clerk_test@example.com)
+06:46:28 PASS create project → project Install tab /dashboard/projects/f31dfd25-22c9-470e-90c1-5e0d98c0eb8c/install
+06:46:28 Project: f31dfd25-22c9-470e-90c1-5e0d98c0eb8c
+06:46:29 PASS snippet copied from Install clipboard="<script src=\"https://askpro-whto-git-p3k-t08-phase3-e2e-dipeeinfo-1772s-projects.vercel.app/widget.js\" data-key=\"pk_4a183f02c54d4d2c951ad1449448b1b4\" async></script>" shown="<script src=\"https://askpro-whto-git-p3k-t08-phase3-e2e-dipeeinfo-1772s-projects.vercel.app/widget.js\" data-key=\"pk_4a183f02c54d4d2c951ad1449448b1b4\" async></script>"
+06:46:33 PASS upload PDF → Ready (status=Ready, 3s)
+06:46:34 PASS button shows in the default corner and color (bottom-right, #000000) {"background":"rgb(0, 0, 0)","right":20,"bottom":20,"label":"Chat"}
+06:46:35 PASS click → panel opens (/embed iframe with key + host origin) https://askpro-whto-git-p3k-t08-phase3-e2e-dipeeinfo-1772s-projects.vercel.app/embed?key=pk_4a183f02c54d4d2c951ad1449448b1b4&origin=http%3A%2F%2F172.17.0.5%3A8081
+06:46:37 PASS ask about the PDF → typing state → answer contains the fact {"typing":true,"reply":"The name of our office cat is Marmaduke Fizzlewick.","error":""}
+06:46:39 PASS unrelated question → fixed "I don't know" reply {"typing":true,"reply":"I don't know the answer to that based on the information I have.","error":""}
+06:46:39 PASS close hides the panel visibility=hidden
+06:46:39 PASS wrong data-key warns NOT_RENDERING warned=true
+06:46:39 PASS wrong data-key shows nothing widget elements=0
+06:46:40 Waiting 65s for a fresh rate-limit window
+06:47:48 Burst of 20: statuses [200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200] (3.2s)
+06:47:49 PASS 21 messages in a minute → first 20 answered, the 21st refused in the panel (21st sent at 4.1s, panel={"typing":true,"reply":null,"error":"You're sending messages too fast. Wait a moment."})
+06:47:49 Stored files before delete: ["b36d9530-0f08-46a1-9271-c2e18b010242.pdf"]
+06:47:51 PASS delete the test project
+06:47:51 PASS its stored files are gone before=1 after=0
+06:47:51 PASS no CSP or framing errors in the console
