@@ -61,7 +61,11 @@ describe("protectChat", () => {
     warn.mockRestore();
   });
 
-  it("builds one client: LIVE 20/min sliding window on publicKey + IP, LIVE injection check", () => {
+  it("builds one client: LIVE 20/min sliding window on publicKey + IP, LIVE injection check", async () => {
+    // Call it here so the test doesn't rely on an earlier test having built the client.
+    protect.mockResolvedValue(decision("allow"));
+    await protectChat(req, input);
+    await protectChat(req, input);
     expect(built.clients).toHaveLength(1);
     expect(built.clients[0]).toMatchObject({ key: "ajkey_test", characteristics: ["publicKey", "ip.src"] });
     expect(built.rateLimits).toEqual([{ mode: "LIVE", interval: 60, max: CHAT_RATE_LIMIT }]);
