@@ -34,8 +34,18 @@
       (function () {
         var textarea = document.getElementById("snippet");
         var status = document.getElementById("status");
+        var loaded = false;
 
         function load(snippet) {
+          // The widget keeps page state (its element, its script, a once-only
+          // guard, a message listener). Loading a second snippet over it would
+          // let a rejected key still show the old button, so start from a fresh
+          // page instead: reload with the new snippet in the hash.
+          if (loaded) {
+            location.hash = "snippet=" + encodeURIComponent(snippet);
+            location.reload();
+            return;
+          }
           var doc = new DOMParser().parseFromString(snippet, "text/html");
           var parsed = doc.querySelector("script[src]");
           if (!parsed) {
@@ -48,6 +58,7 @@
           }
           script.onload = function () { status.textContent = "Loaded " + script.src; };
           script.onerror = function () { status.textContent = "Failed to load " + script.src; };
+          loaded = true;
           document.body.appendChild(script);
           status.textContent = "Loading " + script.src + " …";
         }

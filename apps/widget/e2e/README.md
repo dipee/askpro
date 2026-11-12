@@ -6,7 +6,7 @@ Proves Phase 2's done-when the way a customer uses it:
 
 | File | What it is |
 |---|---|
-| `host.html` | A plain customer page, with no framework and no build. Paste the snippet from the dashboard's **Install** tab and click **Load widget**. It inserts the `<script>` tag exactly as pasted. Its loud global CSS makes any style leak obvious. `host.html#snippet=<encoded snippet>` loads the snippet on open. |
+| `host.html` | A plain customer page, with no framework and no build. Paste the snippet from the dashboard's **Install** tab and click **Load widget**. It inserts the `<script>` tag exactly as pasted. Its loud global CSS makes any style leak obvious. `host.html#snippet=<encoded snippet>` loads the snippet on open. Loading a second snippet reloads the page with it, so the previous widget never lingers. |
 | `run.mjs` | Optional headless run of the whole flow with Playwright. It writes `run.log`, `console.log` and screenshots. |
 
 ## Run it by hand

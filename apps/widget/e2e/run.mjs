@@ -8,6 +8,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
+// Must match NOT_RENDERING in apps/widget/src/widget.ts.
+const NOT_RENDERING = "[widget] bad key, origin or config; not rendering";
 const out = process.argv[2] ?? "./out";
 mkdirSync(out, { recursive: true });
 const PREVIEW = process.env.PREVIEW_URL.replace(/\/$/, "");
@@ -93,14 +95,16 @@ try {
   }
   check("create project → project Install tab", true, new URL(page.url()).pathname);
 
-  // 4. Copy the snippet (Copy button → clipboard), falling back to the code block text.
+  // 4. Copy the snippet (Copy button → clipboard).
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: PREVIEW });
   await page.getByRole("button", { name: /copy snippet/i }).click();
-  let snippet = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+  const copied = (await page.evaluate(() => navigator.clipboard.readText().catch(() => ""))).trim();
   const shown = (await page.locator("pre, code").first().innerText()).trim();
-  if (!snippet) snippet = shown;
-  const snippetOk = /^<script src="https:\/\/[^"]+\/widget\.js" data-key="pk_[A-Za-z0-9_-]+" async><\/script>$/.test(snippet.trim());
-  check("snippet copied from Install", snippetOk && snippet.trim() === shown, snippet.trim());
+  const snippetOk = /^<script src="https:\/\/[^"]+\/widget\.js" data-key="pk_[A-Za-z0-9_-]+" async><\/script>$/.test(shown);
+  // Judge the copy on the clipboard alone; the shown text is only the fallback
+  // that lets the widget checks below still run when the copy failed.
+  check("snippet copied from Install", snippetOk && copied === shown, `clipboard=${JSON.stringify(copied)} shown=${JSON.stringify(shown)}`);
+  const snippet = copied || shown;
   await shot(page, "02-install");
 
   // 5. Paste into the plain host page on another origin and load it.
@@ -157,8 +161,14 @@ try {
   const wrong = await context.newPage();
   await wrong.goto(HOST);
   await wrong.locator("#snippet").fill(snippet.trim().replace(/data-key="[^"]+"/, 'data-key="pk_wrongkey000000"'));
+  // Wait for the widget's own verdict (its single NOT_RENDERING warning) so a
+  // slow script or config request can't pass this check early.
+  const warning = wrong
+    .waitForEvent("console", { predicate: (m) => m.type() === "warning" && m.text() === NOT_RENDERING, timeout: 20000 })
+    .then(() => true, () => false);
   await wrong.locator("#load").click();
-  await wrong.waitForTimeout(4000);
+  const warned = await warning;
+  check("wrong data-key warns NOT_RENDERING", warned, `warned=${warned}`);
   const count = await wrong.locator("[data-askwell-widget]").count();
   check("wrong data-key shows nothing", count === 0, `widget elements=${count}`);
   await shot(wrong, "06-wrong-key");
