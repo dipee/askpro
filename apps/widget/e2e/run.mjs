@@ -62,10 +62,26 @@ await context.route(/clerk\.accounts\.dev\/v1\//, (route) => {
   url.searchParams.set("__clerk_testing_token", clerkTestingToken);
   return route.continue({ url: url.toString() });
 });
+// Protected preview: send the bypass header on every request to the preview (and only
+// there, so the secret never reaches another host). The bypass cookie alone isn't
+// enough: Chromium can drop it as a third-party cookie on the host page's cross-site
+// script, config and iframe requests.
+const previewOrigin = new URL(PREVIEW).origin;
+await context.route(
+  (url) => url.origin === previewOrigin,
+  (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET },
+    }),
+);
 const consoleLines = [];
 context.on("page", (p) => {
   p.on("console", (m) => consoleLines.push(`[${m.type()}] ${m.text()}`));
   p.on("pageerror", (e) => consoleLines.push(`[pageerror] ${e.message}`));
+  p.on("requestfailed", (r) => consoleLines.push(`[requestfailed] ${r.url().split("?")[0]} ${r.failure()?.errorText}`));
+  p.on("response", (r) => {
+    if (r.status() >= 400) consoleLines.push(`[http ${r.status()}] ${r.request().method()} ${r.url().split("?")[0]}`);
+  });
 });
 const shot = (page, name) => page.screenshot({ path: `${out}/${name}.png` });
 
@@ -246,26 +262,38 @@ try {
   await shot(wrong, "06-wrong-key");
   await wrong.close();
 
-  // 9. Rate limit: 20 messages per minute per key + IP. Wait out the window the
-  //    questions above used, then send 21 in a row from the panel.
+  // 9. Rate limit: 20 messages per minute per key + IP (fixed 60s window). Wait out
+  //    the window the questions above used. Then send 20 messages at once from inside
+  //    the widget iframe (same key, IP and route as the panel), so the burst can't
+  //    outlast the window, and send the 21st from the panel.
   log("Waiting 65s for a fresh rate-limit window");
   await host.waitForTimeout(65000);
   await button.click();
   await panel.getByRole("heading").first().waitFor();
+  const embed = host.frames().find((f) => f.url().startsWith(`${PREVIEW}/embed`));
+  const key = new URL(embed.url()).searchParams.get("key");
   const burstStart = Date.now();
-  const burst = [];
-  for (let i = 1; i <= RATE_LIMIT + 1; i++) {
-    const r = await ask(`Do you fix leaking taps? (${i})`);
-    burst.push({ i, s: Math.round((Date.now() - burstStart) / 100) / 10, replied: r.reply !== null, error: r.error });
-  }
+  const statuses = await embed.evaluate(
+    ({ key, n }) =>
+      Promise.all(
+        Array.from({ length: n }, (_, i) =>
+          fetch("/api/widget/chat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ key, visitorId: `v_e2eburst${i}`, message: `Do you fix leaking taps? (${i + 1})` }),
+          }).then((r) => r.status),
+        ),
+      ),
+    { key, n: RATE_LIMIT },
+  );
+  const sentAt = (Date.now() - burstStart) / 1000;
+  log(`Burst of ${RATE_LIMIT}: statuses ${JSON.stringify(statuses)} (${sentAt.toFixed(1)}s)`);
+  const last = await ask(`Do you fix leaking taps? (${RATE_LIMIT + 1})`);
   const elapsed = (Date.now() - burstStart) / 1000;
-  log(`Burst: ${JSON.stringify(burst)}`);
-  const first20 = burst.slice(0, RATE_LIMIT).every((b) => b.replied && !b.error);
-  const last = burst[RATE_LIMIT];
   check(
     `${RATE_LIMIT + 1} messages in a minute → first ${RATE_LIMIT} answered, the ${RATE_LIMIT + 1}st refused in the panel`,
-    first20 && !last.replied && last.error === RATE_LIMITED && elapsed < 60,
-    `(elapsed ${elapsed.toFixed(1)}s, 21st error=${JSON.stringify(last.error)})`,
+    statuses.every((st) => st === 200) && last.reply === null && last.error === RATE_LIMITED && elapsed < 60,
+    `(21st sent at ${elapsed.toFixed(1)}s, panel=${JSON.stringify(last)})`,
   );
   await shot(host, "07-rate-limited");
 
@@ -275,7 +303,7 @@ try {
   await page.goto(`${PREVIEW}/dashboard`);
   await page.getByRole("button", { name: "Delete", exact: true }).first().click();
   await page.getByRole("alertdialog", { name: "Confirm delete" }).getByRole("button", { name: "Delete project" }).click();
-  await page.getByText("E2E Acme Plumbing").waitFor({ state: "detached", timeout: 20000 });
+  await page.getByRole("link", { name: "E2E Acme Plumbing", exact: true }).waitFor({ state: "detached", timeout: 20000 });
   check("delete the test project", true);
   const deletedId = projectId;
   projectId = null;
@@ -288,6 +316,7 @@ try {
   await shot(page, "08-project-deleted");
 } catch (error) {
   check("run", false, String(error).slice(0, 500));
+  await Promise.all(context.pages().map((p, i) => shot(p, `failure-${i}`).catch(() => {})));
 } finally {
   if (projectId && page) {
     // The run failed before its cleanup step: delete the test project through the API.
