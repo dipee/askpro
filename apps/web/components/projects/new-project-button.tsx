@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Plan } from "@askwell/shared";
 import { Button } from "../ui/button";
@@ -16,12 +16,19 @@ export function NewProjectButton({ plan, variant = "primary" }: { plan: Plan; va
   const [error, setError] = useState<CreateError | null>(null);
   const [pending, setPending] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+
+  // Give focus back to the trigger once the dialog is gone. Doing it inside close()
+  // would be ignored: while the modal is open the rest of the page is inert.
+  useEffect(() => {
+    if (wasOpen.current && !open) triggerRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
 
   function close() {
     setOpen(false);
     setName("");
     setError(null);
-    triggerRef.current?.focus();
   }
 
   async function submit() {
