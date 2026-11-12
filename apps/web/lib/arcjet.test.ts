@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const built = vi.hoisted(() => ({ clients: [] as unknown[], rateLimits: [] as unknown[], injection: [] as unknown[] }));
 const protect = vi.hoisted(() => vi.fn());
 const arcjet = vi.hoisted(() => (options: unknown) => (built.clients.push(options), { protect }));
-const slidingWindow = vi.hoisted(() => (options: unknown) => (built.rateLimits.push(options), [{ type: "RATE_LIMIT" }]));
+const fixedWindow = vi.hoisted(() => (options: unknown) => (built.rateLimits.push(options), [{ type: "RATE_LIMIT" }]));
 const detectPromptInjection = vi.hoisted(() => (options: unknown) => (built.injection.push(options), [{ type: "PROMPT_INJECTION" }]));
 
 vi.mock("server-only", () => ({}));
-vi.mock("@arcjet/next", () => ({ default: arcjet, slidingWindow, detectPromptInjection }));
+vi.mock("@arcjet/next", () => ({ default: arcjet, fixedWindow, detectPromptInjection }));
 
 const { protectChat, CHAT_RATE_LIMIT } = await import("./arcjet");
 
@@ -61,14 +61,29 @@ describe("protectChat", () => {
     warn.mockRestore();
   });
 
-  it("builds one client: LIVE 20/min sliding window on publicKey + IP, LIVE injection check", async () => {
+  it("fails open when Arcjet throws (network error, timeout)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    protect.mockRejectedValue(new Error("fetch failed"));
+    await expect(protectChat(req, input)).resolves.toEqual({ ok: true });
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("builds one client: LIVE 20/min fixed window per route + publicKey + IP, LIVE injection check", async () => {
     // Call it here so the test doesn't rely on an earlier test having built the client.
     protect.mockResolvedValue(decision("allow"));
     await protectChat(req, input);
     await protectChat(req, input);
     expect(built.clients).toHaveLength(1);
-    expect(built.clients[0]).toMatchObject({ key: "ajkey_test", characteristics: ["publicKey", "ip.src"] });
-    expect(built.rateLimits).toEqual([{ mode: "LIVE", interval: 60, max: CHAT_RATE_LIMIT }]);
+    expect(built.clients[0]).toMatchObject({ key: "ajkey_test" });
+    expect(built.rateLimits).toEqual([
+      {
+        mode: "LIVE",
+        characteristics: ["http.request.uri.path", "publicKey", "ip.src"],
+        window: 60,
+        max: CHAT_RATE_LIMIT,
+      },
+    ]);
     expect(CHAT_RATE_LIMIT).toBe(20);
     expect(built.injection).toEqual([{ mode: "LIVE" }]);
   });
