@@ -13,12 +13,6 @@ export function formatCreated(iso: string): string {
   return Number.isNaN(date.getTime()) ? "" : DATE.format(date);
 }
 
-/** "12 / 100 messages this month", with the limit from PLAN_LIMITS. */
-export function usageLabel(messagesUsed: number, plan: Plan): string {
-  const limit = PLAN_LIMITS[plan].messagesPerMonth;
-  return `${messagesUsed.toLocaleString("en")} / ${limit.toLocaleString("en")} messages this month`;
-}
-
 /** What to show when a create is refused at the plan limit. */
 export function planLimitMessage(plan: Plan, serverMessage: string): string {
   return plan === "free"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCreated, planLimitMessage, truncateKey, usageLabel } from "./format";
+import { formatCreated, planLimitMessage, truncateKey } from "./format";
 
 describe("format", () => {
   it("truncates long public keys and keeps short ones", () => {
@@ -10,11 +10,6 @@ describe("format", () => {
   it("formats the created date in UTC", () => {
     expect(formatCreated("2026-11-11T23:40:07.424038+00:00")).toBe("Nov 11, 2026");
     expect(formatCreated("not a date")).toBe("");
-  });
-
-  it("shows usage against the plan's monthly limit", () => {
-    expect(usageLabel(12, "free")).toBe("12 / 100 messages this month");
-    expect(usageLabel(1500, "pro")).toBe("1,500 / 2,000 messages this month");
   });
 
   it("uses the upgrade copy on Free and the server's message on Pro", () => {

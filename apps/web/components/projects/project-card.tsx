@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Plan, Project } from "@askwell/shared";
+import type { Project } from "@askwell/shared";
+import type { Usage } from "../../lib/usage";
 import { deleteProject, renameProject } from "./api";
 import { ProjectCardView, type CardMode, type ReturnFocus } from "./project-card-view";
 
 /** A project card with in-page rename and delete. Refreshes the list after each. */
-export function ProjectCard({ project, plan }: { project: Project; plan: Plan }) {
+export function ProjectCard({ project, usage }: { project: Project; usage: Usage }) {
   const router = useRouter();
   const [mode, setMode] = useState<CardMode>("view");
   const [draftName, setDraftName] = useState(project.name);
@@ -47,7 +48,7 @@ export function ProjectCard({ project, plan }: { project: Project; plan: Plan })
   return (
     <ProjectCardView
       project={project}
-      plan={plan}
+      usage={usage}
       mode={mode}
       returnFocus={returnFocus}
       draftName={draftName}
