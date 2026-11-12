@@ -1,7 +1,7 @@
-import { idParamsSchema, type ListConversationsResponse } from "@askwell/shared";
+import { idParamsSchema, listConversationsQuerySchema, type ListConversationsResponse } from "@askwell/shared";
 import type { NextRequest } from "next/server";
 import { errorResponse } from "../../../../../lib/api/errors";
-import { listConversationsQuerySchema, queryObject, toConversationSummary } from "../../../../../lib/conversations";
+import { queryObject, toConversationSummary } from "../../../../../lib/conversations";
 import { currentUserId, getOwnedProject } from "../../../../../lib/projects";
 import { createOwnerClient } from "../../../../../lib/supabase/owner";
 

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { MessageRole } from "../messages";
 
 /** One row in a project's conversation list. */
@@ -23,6 +24,14 @@ export interface Conversation {
   visitorId: string;
   createdAt: string;
 }
+
+// GET /api/projects/:id/conversations?limit=&offset= query
+/** Paging: limit 1..100 (default 50), offset >= 0 (default 0); the bounds owner_activity enforces. */
+export const listConversationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
 
 // GET /api/projects/:id/conversations (newest first)
 export interface ListConversationsResponse {

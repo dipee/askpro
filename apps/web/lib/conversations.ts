@@ -1,20 +1,5 @@
 import type { Database } from "@askwell/db";
 import { MESSAGE_ROLES, type Conversation, type ConversationSummary, type Message, type MessageRole } from "@askwell/shared";
-import { z } from "zod";
-
-/** Page size bounds, the same as owner_activity's (it raises invalid_page outside them). */
-export const CONVERSATIONS_PAGE_MAX = 100;
-export const CONVERSATIONS_PAGE_DEFAULT = 50;
-
-/**
- * GET /api/projects/:id/conversations query: `?limit=1..100` (default 50) and
- * `?offset>=0` (default 0). Kept here until packages/shared has a schema for it.
- */
-export const listConversationsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(CONVERSATIONS_PAGE_MAX).default(CONVERSATIONS_PAGE_DEFAULT),
-  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
-});
-export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
 
 /** The query params as a plain object; a param given twice uses the first value. */
 export function queryObject(params: URLSearchParams): Record<string, string> {

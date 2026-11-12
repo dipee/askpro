@@ -1,13 +1,13 @@
+import { listConversationsQuerySchema } from "@askwell/shared";
 import { describe, expect, it } from "vitest";
 import {
-  listConversationsQuerySchema,
   queryObject,
   toConversation,
   toConversationSummary,
   toMessage,
 } from "./conversations";
 
-describe("listConversationsQuerySchema", () => {
+describe("listConversationsQuerySchema (packages/shared)", () => {
   it("defaults to limit 50, offset 0", () => {
     expect(listConversationsQuerySchema.parse({})).toEqual({ limit: 50, offset: 0 });
   });
@@ -17,7 +17,7 @@ describe("listConversationsQuerySchema", () => {
     expect(listConversationsQuerySchema.parse({ limit: "100", offset: "250" })).toEqual({ limit: 100, offset: 250 });
   });
 
-  it.each([{ limit: "0" }, { limit: "101" }, { limit: "1.5" }, { limit: "x" }, { offset: "-1" }, { offset: "" }])(
+  it.each([{ limit: "0" }, { limit: "101" }, { limit: "1.5" }, { limit: "x" }, { offset: "-1" }, { offset: "1.5" }])(
     "rejects %o",
     (query) => {
       expect(listConversationsQuerySchema.safeParse(query).success).toBe(false);
