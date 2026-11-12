@@ -3,7 +3,12 @@
 /*
  * Askwell design tokens (docs/project.md §13).
  * One set, shared by every page. Black and white, with glass panels.
- * Light (dashboard) is the default; add `.dark` to a subtree for the dark look (landing).
+ * Light is the default. Two dark sets:
+ * - `.dark` on a subtree: the landing page (always dark).
+ * - the dashboard's dark mode: `<html data-theme="dark">` (set before paint from the
+ *   owner's choice, lib/theme.ts) applies only while a `[data-dashboard]` element is on
+ *   the page, so /embed, sign-in and the landing keep their look. The tokens sit on
+ *   :root so `body` and Clerk's popovers (portalled outside the layout) get them too.
  */
 :root {
   /* palette */
@@ -30,6 +35,18 @@
   --ring: var(--gray-900);
   --primary: var(--color-black);
   --primary-foreground: var(--color-white);
+  --primary-hover: var(--gray-800);
+  /* hover tint for quiet items (nav links, icon buttons) */
+  --hover: rgb(0 0 0 / 0.05);
+  /* solid-ish panels over the page: dialogs */
+  --surface: rgb(255 255 255 / 0.9);
+  /* loading placeholders */
+  --skeleton: rgb(228 228 231 / 0.7);
+
+  /* dashboard canvas and the soft shapes behind its glass */
+  --canvas: var(--gray-50);
+  --canvas-shape-1: rgb(212 212 216 / 0.5);
+  --canvas-shape-2: rgb(228 228 231 / 0.7);
 
   /* glass panels */
   --glass-bg: rgb(255 255 255 / 0.6);
@@ -59,10 +76,47 @@
   --ring: var(--gray-200);
   --primary: var(--color-white);
   --primary-foreground: var(--color-black);
+  --primary-hover: var(--gray-200);
+  --hover: rgb(255 255 255 / 0.08);
+  --surface: rgb(24 24 27 / 0.9);
+  --skeleton: rgb(255 255 255 / 0.1);
 
   --glass-bg: rgb(255 255 255 / 0.06);
   --glass-border: rgb(255 255 255 / 0.12);
   --shadow-glass: 0 8px 32px rgb(0 0 0 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+/* Dashboard dark mode. Same contrast as light: text ≥ 7:1, muted text ≥ 4.5:1 on every surface. */
+:root[data-theme="dark"]:has([data-dashboard]) {
+  color-scheme: dark; /* native controls, scrollbars and Clerk's components */
+
+  --background: var(--gray-950);
+  --foreground: var(--color-white);
+  --muted: var(--gray-900);
+  --muted-foreground: var(--gray-400);
+  --border: var(--gray-800);
+  --ring: var(--gray-200);
+  --primary: var(--color-white);
+  --primary-foreground: var(--color-black);
+  --primary-hover: var(--gray-200);
+  --hover: rgb(255 255 255 / 0.08);
+  --surface: rgb(24 24 27 / 0.9);
+  --skeleton: rgb(255 255 255 / 0.1);
+
+  --canvas: var(--gray-950);
+  --canvas-shape-1: rgb(255 255 255 / 0.07);
+  --canvas-shape-2: rgb(255 255 255 / 0.05);
+
+  --glass-bg: rgb(255 255 255 / 0.05);
+  --glass-border: rgb(255 255 255 / 0.1);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  --shadow-glass: 0 8px 32px rgb(0 0 0 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+:root[data-theme="light"]:has([data-dashboard]) {
+  color-scheme: light;
 }
 
 /* Expose the tokens as Tailwind utilities: bg-background, text-muted-foreground, rounded-lg, shadow-glass, backdrop-blur-glass… */
@@ -75,6 +129,13 @@
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-hover: var(--hover);
+  --color-surface: var(--surface);
+  --color-skeleton: var(--skeleton);
+  --color-canvas: var(--canvas);
+  --color-canvas-shape-1: var(--canvas-shape-1);
+  --color-canvas-shape-2: var(--canvas-shape-2);
   --color-glass: var(--glass-bg);
   --color-glass-border: var(--glass-border);
 
