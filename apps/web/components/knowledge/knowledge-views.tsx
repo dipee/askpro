@@ -222,6 +222,8 @@ export type SourceItem = {
   createdAt: string | null;
   /** Upload progress 0–1 while the file is being sent. */
   progress?: number;
+  /** An add this tab is still sending, uploading or finalizing: it can't be deleted yet. */
+  active?: boolean;
 };
 
 export type RowState = { confirming: boolean; deleting: boolean; error: string | null };
@@ -261,7 +263,7 @@ function SourceRow(props: {
 }) {
   const { item, state } = props;
   const created = item.createdAt ? formatCreated(item.createdAt) : null;
-  const canDelete = item.id !== null && item.progress === undefined;
+  const canDelete = item.id !== null && !item.active;
   return (
     <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5" data-source-id={item.id ?? undefined}>
       <div className="min-w-0 flex-1">

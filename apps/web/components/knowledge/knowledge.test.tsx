@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { KnowledgeSource } from "@askwell/shared";
-import type { RowState } from "./knowledge-views";
+import type { RowState, SourceItem } from "./knowledge-views";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
@@ -149,18 +149,25 @@ describe("SourceList: delete", () => {
     );
   });
 
-  it("has no Delete while a file is still uploading in this tab", () => {
-    const html = renderToStaticMarkup(
-      <SourceList
-        items={[{ ...item, status: "Processing", progress: 0.4 }]}
-        rowState={() => IDLE}
-        onStartDelete={noop}
-        onConfirmDelete={noop}
-        onCancelDelete={noop}
-      />,
+  const one = (i: SourceItem) =>
+    renderToStaticMarkup(
+      <SourceList items={[i]} rowState={() => IDLE} onStartDelete={noop} onConfirmDelete={noop} onCancelDelete={noop} />,
     );
+
+  it("has no Delete while this tab is still uploading the file", () => {
+    const html = one({ ...item, status: "Processing", progress: 0.4, active: true });
     expect(html).toContain("Uploading 40%");
     expect(html).not.toContain("Delete Manual");
+  });
+
+  it("has no Delete while the upload is finalizing (id reserved, upload done)", () => {
+    const html = one({ ...item, status: "Processing", active: true });
+    expect(html).toContain(">Processing<");
+    expect(html).not.toContain("Delete Manual");
+  });
+
+  it("offers Delete again once the add has finished", () => {
+    expect(one({ ...item, status: "Processing", active: false })).toContain('aria-label="Delete Manual"');
   });
 });
 

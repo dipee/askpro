@@ -53,7 +53,9 @@ export function listItems(
   const activeIds = new Set(active.flatMap((p) => (p.id ? [p.id] : [])));
   const server = sources.filter((s) => !deleted.has(s.id) && !activeIds.has(s.id));
   const listed = new Set(server.map((s) => s.id));
-  const finished = pending.filter((p) => p.doneWith === sources && p.id !== null && !listed.has(p.id));
+  const finished = pending.filter(
+    (p) => p.doneWith === sources && p.id !== null && !listed.has(p.id) && !deleted.has(p.id),
+  );
   const local = [...active, ...finished];
   const items: SourceItem[] = [
     ...local.map((p) => ({
@@ -64,6 +66,7 @@ export function listItems(
       status: "Processing" as const,
       createdAt: null,
       progress: p.progress,
+      active: !p.doneWith,
     })),
     ...server.map((s) => ({ key: s.id, id: s.id, title: s.title, type: s.type, status: statusLabel(s.status), createdAt: s.createdAt })),
   ];

@@ -60,6 +60,33 @@ describe("listItems", () => {
     expect(r.used).toBe(2);
   });
 
+  it("marks this tab's unfinished adds active (no Delete) and finished ones not", () => {
+    const before = [src("a")];
+    const r = listItems(
+      before,
+      [
+        { key: "up", id: "b", title: "Uploading", type: "pdf", progress: 0.5 },
+        { key: "fin", id: "c", title: "Finalizing", type: "pdf" },
+        { key: "done", id: "d", title: "Done", type: "text", doneWith: before },
+      ],
+      none,
+    );
+    expect(r.items.map((i) => [i.key, i.active ?? false])).toEqual([
+      ["up", true],
+      ["fin", true],
+      ["done", false],
+      ["a", false],
+    ]);
+  });
+
+  it("drops a finished add that was deleted before the refreshed list arrived", () => {
+    const before = [src("a")];
+    const done: Pending = { key: "k", id: "b", title: "New", type: "text", doneWith: before };
+    const r = listItems(before, [done], new Set(["b"]));
+    expect(view(r)).toEqual(["a:Ready"]);
+    expect(r.used).toBe(1);
+  });
+
   it("hides deleted sources and frees their slot", () => {
     const r = listItems([src("a"), src("b")], [], new Set(["a"]));
     expect(view(r)).toEqual(["b:Ready"]);
