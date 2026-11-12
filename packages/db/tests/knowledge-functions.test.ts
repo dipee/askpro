@@ -41,7 +41,7 @@ const text = (projectId: string, limit: number) =>
 function reserve(args: readonly unknown[], role: ApiRole = "service_role") {
   return pg.as(role, null, async (s) => {
     const { rows } = await s.query<Reserved>(
-      "select * from public.reserve_knowledge_source($1, $2, $3, $4, $5, $6)",
+      "select * from public.reserve_knowledge_source(p_project_id => $1, p_title => $2, p_type => $3, p_storage_key => $4, p_status => $5, p_limit => $6)",
       [...args],
     );
     expect(rows).toHaveLength(1);
@@ -80,6 +80,17 @@ describe("reserve_knowledge_source", () => {
     const t = await reserve(text(projectId, 3));
     expect(t).toMatchObject({ type: "text", storage_key: null, status: "processing", reclaimed_keys: [] });
     expect(await countRows(pg, "knowledge_sources", "project_id = $1", [projectId])).toBe(2);
+  });
+
+  it("lets pasted text omit p_storage_key (it defaults to null)", async () => {
+    const projectId = await newProject();
+    const { rows } = await pg.as("service_role", null, (s) =>
+      s.query<Reserved>(
+        "select * from public.reserve_knowledge_source(p_project_id => $1, p_title => 'Pasted', p_type => 'text', p_status => 'processing', p_limit => 3)",
+        [projectId],
+      ),
+    );
+    expect(rows).toEqual([expect.objectContaining({ type: "text", storage_key: null, status: "processing" })]);
   });
 
   it("allows sources up to the limit it is given, then refuses with plan_limit", async () => {
@@ -171,7 +182,7 @@ describe("reserve_knowledge_source", () => {
     it("locks the project row FOR UPDATE before reclaiming and counting, and is VOLATILE", async () => {
       const { rows } = await pg.db.query<{ src: string; volatility: string }>(
         `select prosrc as src, provolatile as volatility from pg_proc
-         where oid = 'public.reserve_knowledge_source(uuid, text, text, text, text, int)'::regprocedure`,
+         where oid = 'public.reserve_knowledge_source(uuid, text, text, text, int, text)'::regprocedure`,
       );
       const src = rows[0].src.toLowerCase().replace(/\s+/g, " ");
       const lock = src.indexOf("from public.projects p where p.id = p_project_id for update;");
@@ -278,7 +289,7 @@ describe("match_chunks", () => {
 
 describe("permissions", () => {
   const signatures = [
-    "public.reserve_knowledge_source(uuid, text, text, text, text, int)",
+    "public.reserve_knowledge_source(uuid, text, text, text, int, text)",
     "public.match_chunks(uuid, extensions.vector, int)",
   ];
 
@@ -286,7 +297,7 @@ describe("permissions", () => {
     const projectId = await newProject();
     await expectPgError(
       pg.as(role, "user_x", (s) =>
-        s.query("select * from public.reserve_knowledge_source($1, 'T', 'text', null, 'processing', 3)", [projectId]),
+        s.query("select * from public.reserve_knowledge_source($1, 'T', 'text', 'processing', 3)", [projectId]),
       ),
       PG.insufficientPrivilege,
     );

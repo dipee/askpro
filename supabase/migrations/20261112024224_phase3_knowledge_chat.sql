@@ -42,7 +42,7 @@ on conflict (id) do update set
 --   1. deletes this project's sources still 'uploading' after 2 hours (lazy reclaim),
 --   2. counts the remaining sources; at p_limit or more it raises plan_limit,
 --   3. inserts the new source.
--- Pasted text: type 'text', status 'processing', null storage_key.
+-- Pasted text: type 'text', status 'processing', no storage_key.
 -- Files: type 'pdf' | 'md' | 'txt', status 'uploading', a storage_key.
 --
 -- Returns one row: the new knowledge_sources row plus reclaimed_keys, the storage keys
@@ -54,9 +54,9 @@ create function public.reserve_knowledge_source(
   p_project_id uuid,
   p_title text,
   p_type text,
-  p_storage_key text,
   p_status text,
-  p_limit int
+  p_limit int,
+  p_storage_key text default null
 )
 returns table (
   id uuid,
@@ -122,9 +122,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.reserve_knowledge_source(uuid, text, text, text, text, int)
+revoke execute on function public.reserve_knowledge_source(uuid, text, text, text, int, text)
   from public, anon, authenticated;
-grant execute on function public.reserve_knowledge_source(uuid, text, text, text, text, int)
+grant execute on function public.reserve_knowledge_source(uuid, text, text, text, int, text)
   to service_role;
 
 -- ---------------------------------------------------------------------------
@@ -134,7 +134,10 @@ grant execute on function public.reserve_knowledge_source(uuid, text, text, text
 -- hnsw.iterative_scan: without it the HNSW index yields its ef_search (40) nearest
 -- chunks across all projects before the project filter runs, so a small project could
 -- get fewer than p_count rows, or none. relaxed_order keeps scanning until enough rows
--- pass the filter; the outer ORDER BY restores strict order.
+-- pass the filter or hnsw.max_scan_tuples (default 20,000) is reached, so results can
+-- still be short when other projects' chunks fill that budget. A short result is fine
+-- here: the chat just gets less context. The outer ORDER BY restores strict order
+-- (`distance + 0`, as pgvector requires on Postgres 17+ for a materialized CTE).
 -- ---------------------------------------------------------------------------
 
 create function public.match_chunks(
@@ -176,7 +179,7 @@ begin
   )
   select n.id, n.source_id, n.content, 1 - n.distance
   from nearest n
-  order by n.distance;
+  order by n.distance + 0;
 end;
 $$;
 
@@ -247,7 +250,7 @@ grant execute on function public.consume_message(uuid, int) to service_role;
 -- ---------------------------------------------------------------------------
 -- save_chat_turn: save a visitor message and the bot's reply.
 --
--- p_conversation_id null: creates the conversation for p_visitor_id. Otherwise the
+-- p_conversation_id null (the default): creates the conversation for p_visitor_id. Otherwise the
 -- conversation must belong to p_project_id, else conversation_not_found. The visitor
 -- message is inserted before the bot message (messages.created_at uses
 -- clock_timestamp(), so they sort in that order). Returns the conversation id.
@@ -256,9 +259,9 @@ grant execute on function public.consume_message(uuid, int) to service_role;
 create function public.save_chat_turn(
   p_project_id uuid,
   p_visitor_id text,
-  p_conversation_id uuid,
   p_visitor_body text,
-  p_bot_body text
+  p_bot_body text,
+  p_conversation_id uuid default null
 )
 returns uuid
 language plpgsql
@@ -296,6 +299,6 @@ begin
 end;
 $$;
 
-revoke execute on function public.save_chat_turn(uuid, text, uuid, text, text)
+revoke execute on function public.save_chat_turn(uuid, text, text, text, uuid)
   from public, anon, authenticated;
-grant execute on function public.save_chat_turn(uuid, text, uuid, text, text) to service_role;
+grant execute on function public.save_chat_turn(uuid, text, text, text, uuid) to service_role;

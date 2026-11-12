@@ -291,7 +291,7 @@ export type Database = {
           p_limit: number
           p_project_id: string
           p_status: string
-          p_storage_key: string
+          p_storage_key?: string
           p_title: string
           p_type: string
         }
@@ -309,7 +309,7 @@ export type Database = {
       save_chat_turn: {
         Args: {
           p_bot_body: string
-          p_conversation_id: string
+          p_conversation_id?: string
           p_project_id: string
           p_visitor_body: string
           p_visitor_id: string

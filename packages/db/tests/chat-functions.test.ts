@@ -118,7 +118,7 @@ describe("save_chat_turn", () => {
   function save(projectId: string, conversationId: string | null, visitor = "Hi", bot = "Hello!") {
     return pg.as("service_role", null, async (s) => {
       const { rows } = await s.query<{ id: string }>(
-        "select public.save_chat_turn($1, 'visitor_0001', $2, $3, $4) as id",
+        "select public.save_chat_turn(p_project_id => $1, p_visitor_id => 'visitor_0001', p_conversation_id => $2, p_visitor_body => $3, p_bot_body => $4) as id",
         [projectId, conversationId, visitor, bot],
       );
       return rows[0].id;
@@ -148,6 +148,20 @@ describe("save_chat_turn", () => {
     expect(await countRows(pg, "conversations", "project_id = $1", [projectId])).toBe(1);
   });
 
+  it("creates a conversation when p_conversation_id is omitted (it defaults to null)", async () => {
+    const projectId = await newProject();
+    const { rows } = await pg.as("service_role", null, (s) =>
+      s.query<{ id: string }>(
+        "select public.save_chat_turn(p_project_id => $1, p_visitor_id => 'visitor_0002', p_visitor_body => 'Hi', p_bot_body => 'Hello!') as id",
+        [projectId],
+      ),
+    );
+    expect(await messages(rows[0].id)).toEqual([
+      { role: "visitor", body: "Hi" },
+      { role: "bot", body: "Hello!" },
+    ]);
+  });
+
   it("refuses another project's conversation and saves nothing", async () => {
     const mine = await newProject();
     const other = await newProject();
@@ -171,7 +185,7 @@ describe("save_chat_turn", () => {
 });
 
 describe("permissions", () => {
-  const signatures = ["public.consume_message(uuid, int)", "public.save_chat_turn(uuid, text, uuid, text, text)"];
+  const signatures = ["public.consume_message(uuid, int)", "public.save_chat_turn(uuid, text, text, text, uuid)"];
 
   it.each<ApiRole>(["anon", "authenticated"])("%s can't execute either function", async (role) => {
     const projectId = await newProject();
@@ -181,7 +195,7 @@ describe("permissions", () => {
     );
     await expectPgError(
       pg.as(role, "user_x", (s) =>
-        s.query("select public.save_chat_turn($1, 'visitor_0001', null, 'Hi', 'Hello')", [projectId]),
+        s.query("select public.save_chat_turn($1, 'visitor_0001', 'Hi', 'Hello')", [projectId]),
       ),
       PG.insufficientPrivilege,
     );
