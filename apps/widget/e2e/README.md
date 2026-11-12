@@ -47,3 +47,4 @@ node run.mjs ./out
 
 - `CLERK_SECRET_KEY` (the **dev** instance's key) creates a Clerk testing token. Clerk's bot protection otherwise blocks headless sign-up. The test user signs up with a `+clerk_test` email and the test code `424242`.
 - Each run creates a new user and project on the dev database.
+- Behind an HTTPS-inspecting proxy (some sandboxes): set `IGNORE_HTTPS_ERRORS=1`, so the proxy's CA is accepted. Serve `host.html` on a non-loopback address (`python3 -m http.server 8081 --bind 0.0.0.0`, `HOST_URL=http://<your-ip>:8081/host.html`) and list that IP in `PROXY_BYPASS`. Chromium can still send loopback addresses to the proxy.

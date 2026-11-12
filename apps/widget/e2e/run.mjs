@@ -32,11 +32,17 @@ const tokenRes = await fetch("https://api.clerk.com/v1/testing_tokens", {
 });
 const clerkTestingToken = (await tokenRes.json()).token;
 
+// Sandboxes behind an HTTPS-inspecting proxy: PROXY_BYPASS lists hosts to reach
+// directly (the host page's server), IGNORE_HTTPS_ERRORS=1 accepts the proxy's CA.
+const ignoreHTTPSErrors = process.env.IGNORE_HTTPS_ERRORS === "1";
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM ?? undefined,
-  proxy: process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" } : undefined,
+  proxy: process.env.HTTPS_PROXY
+    ? { server: process.env.HTTPS_PROXY, bypass: process.env.PROXY_BYPASS ?? "localhost,127.0.0.1" }
+    : undefined,
+  args: ignoreHTTPSErrors ? ["--ignore-certificate-errors"] : [],
 });
-const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, ignoreHTTPSErrors });
 await context.route(/clerk\.accounts\.dev\/v1\//, (route) => {
   const url = new URL(route.request().url());
   url.searchParams.set("__clerk_testing_token", clerkTestingToken);
