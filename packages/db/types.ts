@@ -286,6 +286,16 @@ export type Database = {
           source_id: string
         }[]
       }
+      owner_activity: {
+        Args: { p_limit?: number; p_offset?: number; p_project_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          message_count: number
+          preview: string
+          visitor_id: string
+        }[]
+      }
       reserve_knowledge_source: {
         Args: {
           p_limit: number
