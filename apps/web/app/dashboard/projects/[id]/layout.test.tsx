@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,5 +54,20 @@ describe("project layout", () => {
     expect(html).toContain("&lt;b&gt;Desk&lt;/b&gt;");
     expect(html).toContain(`href="/dashboard/projects/${ID}/install"`);
     expect(html).toContain("<p>child</p>");
+  });
+});
+
+describe("streaming before notFound()", () => {
+  // A loading.tsx in any segment above [id] wraps this layout in Suspense, so Next.js
+  // streams a 200 before the ownership check can call notFound(). Keep them out.
+  it.each(["../../../loading.tsx", "../../loading.tsx", "../loading.tsx"])(
+    "no loading.tsx above the project layout (%s)",
+    (path) => {
+      expect(existsSync(new URL(path, import.meta.url))).toBe(false);
+    },
+  );
+
+  it("the project's own loading.tsx sits below the layout", () => {
+    expect(existsSync(new URL("./loading.tsx", import.meta.url))).toBe(true);
   });
 });
