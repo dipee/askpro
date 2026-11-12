@@ -81,10 +81,9 @@ vi.mock("../../../../lib/chat/reply", () => ({
     return fake.state.reply;
   },
 }));
-// readJsonBody lives in lib/projects, which imports Clerk; the route never calls it.
-vi.mock("@clerk/nextjs/server", () => ({ auth: async () => ({ userId: null }) }));
 
 const { POST, OPTIONS, CHAT_MATCH_COUNT } = await import("./route");
+const { MAX_CHAT_BODY_BYTES } = await import("../../../../lib/chat/body");
 
 const KEY = "pk_0123456789abcdef0123456789abcdef";
 const OTHER_KEY = "pk_fedcba9876543210fedcba9876543210";
@@ -93,6 +92,7 @@ const OTHER_PROJECT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const CONVO = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const OTHER_CONVO = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const VISITOR = "visitor_12345";
+const OTHER_VISITOR_CONVO = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
 function post(body: unknown): Promise<Response> {
   return POST(
@@ -128,8 +128,9 @@ beforeEach(() => {
       { id: OTHER_PROJECT, public_key: OTHER_KEY, accounts: { plan: "pro" } },
     ],
     conversations: [
-      { id: CONVO, project_id: PROJECT },
-      { id: OTHER_CONVO, project_id: OTHER_PROJECT },
+      { id: CONVO, project_id: PROJECT, visitor_id: VISITOR },
+      { id: OTHER_CONVO, project_id: OTHER_PROJECT, visitor_id: VISITOR },
+      { id: OTHER_VISITOR_CONVO, project_id: PROJECT, visitor_id: "visitor_other" },
     ],
     chunks: [
       { project_id: OTHER_PROJECT, id: "c-other", source_id: "s-other", content: "Other project's secret.", similarity: 0.99 },
@@ -235,6 +236,18 @@ describe("POST /api/widget/chat", () => {
     await expectError(await ask({ conversationId: OTHER_CONVO }), 404, "not_found");
     expect(fake.state.events).toEqual(["arcjet", "read:projects", "read:conversations"]);
     expect(fake.state.messagesUsed).toEqual({});
+  });
+
+  it("404 for another visitor's conversation in the same project: nothing counted, no OpenAI call", async () => {
+    await expectError(await ask({ conversationId: OTHER_VISITOR_CONVO }), 404, "not_found");
+    expect(fake.state.events).toEqual(["arcjet", "read:projects", "read:conversations"]);
+    expect(fake.state.messagesUsed).toEqual({});
+  });
+
+  it("400 for a body over the byte cap, before Arcjet or the database", async () => {
+    const res = await post({ key: KEY, visitorId: VISITOR, message: "Hi", padding: "x".repeat(MAX_CHAT_BODY_BYTES) });
+    await expectError(res, 400, "validation");
+    expect(fake.state.events).toEqual([]);
   });
 
   it("429 quota_exceeded at the monthly limit, with no OpenAI call", async () => {

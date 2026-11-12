@@ -3,8 +3,8 @@ import { embedTexts } from "../../../../lib/ai/openai";
 import { publicCorsHeaders, publicPreflight } from "../../../../lib/api/cors";
 import { errorResponse } from "../../../../lib/api/errors";
 import { protectChat } from "../../../../lib/arcjet";
+import { readJsonBodyCapped } from "../../../../lib/chat/body";
 import { generateReply } from "../../../../lib/chat/reply";
-import { readJsonBody } from "../../../../lib/projects";
 import { createServiceClient } from "../../../../lib/supabase/service";
 
 // Public: the /embed panel calls this from inside the widget iframe (project.md §6.6, §8).
@@ -28,8 +28,11 @@ export function OPTIONS(): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  // 1. Validate.
-  const input = chatRequestSchema.safeParse(await readJsonBody(request));
+  // 1. Validate. The body is read under a byte cap before parsing, so an oversized
+  // request costs no parsing (it runs before the rate limit).
+  const raw = await readJsonBodyCapped(request);
+  if (!raw.ok && raw.reason === "too_large") return fail("validation", "This message is too long.");
+  const input = chatRequestSchema.safeParse(raw.ok ? raw.value : undefined);
   if (!input.success) return fail("validation", "Invalid chat message.");
   const { key, visitorId, conversationId, message } = input.data;
 
@@ -50,13 +53,16 @@ export async function POST(request: Request): Promise<Response> {
   if (!project.data) return fail("not_found", "Unknown widget key.");
   const projectId = project.data.id;
 
-  // A given conversation must be this project's, checked before anything is counted.
+  // A given conversation must be this project's and this visitor's, checked before
+  // anything is counted. A conversation's project and visitor never change, so
+  // save_chat_turn below writes to the conversation checked here.
   if (conversationId) {
     const conversation = await db
       .from("conversations")
       .select("id")
       .eq("id", conversationId)
       .eq("project_id", projectId)
+      .eq("visitor_id", visitorId)
       .maybeSingle();
     if (conversation.error) return internal("reading the conversation failed", conversation.error.message);
     if (!conversation.data) return fail("not_found", "Conversation not found.");
