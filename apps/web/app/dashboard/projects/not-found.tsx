@@ -10,7 +10,7 @@ export default function ProjectNotFound() {
       action={
         <Link
           href="/dashboard"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-gray-800"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
         >
           Back to projects
         </Link>

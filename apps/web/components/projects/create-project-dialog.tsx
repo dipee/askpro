@@ -44,7 +44,7 @@ export function CreateProjectDialog({ name, error, pending, onNameChange, onSubm
       }}
       className="mx-auto mb-4 mt-auto w-[calc(100%-2rem)] max-w-md bg-transparent p-0 backdrop:bg-black/30 sm:my-auto"
     >
-      <GlassPanel className="bg-white/90 p-6">
+      <GlassPanel className="bg-surface p-6">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div>
             <h2 id="new-project-title" className="text-lg font-semibold tracking-tight">

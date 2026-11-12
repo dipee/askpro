@@ -19,7 +19,7 @@ export function Skeleton({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       aria-hidden="true"
-      className={cn("animate-pulse rounded-md bg-gray-200/70", className)}
+      className={cn("animate-pulse rounded-md bg-skeleton", className)}
       {...props}
     />
   );

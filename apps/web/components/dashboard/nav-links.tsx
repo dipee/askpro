@@ -24,7 +24,7 @@ export function NavLinks({ pathname, onNavigate }: NavLinksProps) {
                 "flex h-10 items-center rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                 active
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-black/5 hover:text-foreground",
+                  : "text-muted-foreground hover:bg-hover hover:text-foreground",
               )}
             >
               {item.label}
