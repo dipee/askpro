@@ -2,6 +2,7 @@ import { MAX_CHAT_MESSAGE_CHARS, type ChatRequest } from "@askwell/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   CHAT_ERROR_MESSAGES,
+  CHAT_TIMEOUT_MS,
   CHAT_PATH,
   CONVERSATION_STORAGE_PREFIX,
   createChatSession,
@@ -78,6 +79,7 @@ describe("createChatSession", () => {
     ["an unknown code", err(418, "teapot")],
     ["a non-JSON error body", new Response("<html>Bad gateway</html>", { status: 502 })],
     ["a 200 with a bad body", json(200, { reply: 42 })],
+    ["a 200 with a malformed conversationId", json(200, { reply: "Hello", conversationId: "invalid" })],
   ])("shows the generic retry message for %s", async (_name, response) => {
     const { fetchFn } = mockFetch(response);
     const session = createChatSession({ publicKey: KEY, visitorId: VISITOR, fetchFn });
@@ -153,5 +155,55 @@ describe("createChatSession", () => {
     await session.send("First");
     await session.send("Second");
     expect(bodies[1]?.conversationId).toBe(CONV_1);
+  });
+
+  it("never stores a malformed conversationId from a 200", async () => {
+    const storage = memoryStorage();
+    const { fetchFn, bodies } = mockFetch(json(200, { reply: "Hello", conversationId: "invalid" }), ok(CONV_1));
+    const session = createChatSession({ publicKey: KEY, visitorId: VISITOR, fetchFn, storage: () => storage });
+    await session.send("First");
+    await session.send("Second");
+    expect(session.conversationId).toBe(CONV_1);
+    expect(bodies[1]).not.toHaveProperty("conversationId");
+  });
+
+  describe("request deadline", () => {
+    it.each([
+      ["the connection stalls", () => new Promise<Response>(() => {})],
+      [
+        "the response body stalls",
+        async () => ({ ok: true, status: 200, json: () => new Promise<unknown>(() => {}) }) as unknown as Response,
+      ],
+    ])("gives up with the generic message and aborts the request when %s", async (_name, answer) => {
+      vi.useFakeTimers();
+      try {
+        let signal: AbortSignal | undefined;
+        const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+          signal = init?.signal ?? undefined;
+          return answer();
+        }) as unknown as typeof fetch;
+        const session = createChatSession({ publicKey: KEY, visitorId: VISITOR, fetchFn });
+
+        const outcome = session.send("Hi");
+        await vi.advanceTimersByTimeAsync(CHAT_TIMEOUT_MS - 1);
+        expect(signal?.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(outcome).resolves.toEqual({ ok: false, error: GENERIC_ERROR });
+        expect(signal?.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("clears the deadline after a normal reply", async () => {
+      vi.useFakeTimers();
+      try {
+        const { fetchFn } = mockFetch(ok(CONV_1));
+        await expect(createChatSession({ publicKey: KEY, visitorId: VISITOR, fetchFn }).send("Hi")).resolves.toMatchObject({ ok: true });
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
