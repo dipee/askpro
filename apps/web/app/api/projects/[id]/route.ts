@@ -6,6 +6,7 @@ import {
 } from "@askwell/shared";
 import type { NextRequest } from "next/server";
 import { errorResponse } from "../../../../lib/api/errors";
+import { removeObjects } from "../../../../lib/knowledge/storage";
 import { currentUserId, PROJECT_COLUMNS, projectFromRow, readJsonBody } from "../../../../lib/projects";
 import { createOwnerClient } from "../../../../lib/supabase/owner";
 
@@ -39,14 +40,29 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/projec
   return Response.json(body);
 }
 
-/** DELETE /api/projects/:id: delete with its config, knowledge and conversations (FK cascade). */
+/**
+ * DELETE /api/projects/:id: delete with its config, knowledge and conversations (FK
+ * cascade), then remove its knowledge files from Storage.
+ */
 export async function DELETE(_request: NextRequest, ctx: RouteContext<"/api/projects/[id]">): Promise<Response> {
   if (!(await currentUserId())) return errorResponse("unauthorized", "Sign in required.");
 
   const params = idParamsSchema.safeParse(await ctx.params);
   if (!params.success) return errorResponse("validation", "Invalid project ID.");
 
-  const { data, error } = await createOwnerClient()
+  const owner = createOwnerClient();
+  // The file keys must be read before the cascade deletes their rows. Owner client: RLS
+  // returns nothing for another owner's project.
+  const { data: files, error: filesError } = await owner
+    .from("knowledge_sources")
+    .select("storage_key")
+    .eq("project_id", params.data.id);
+  if (filesError) {
+    console.error("delete project: reading file keys failed", filesError.message);
+    return errorResponse("internal", "Something went wrong.");
+  }
+
+  const { data, error } = await owner
     .from("projects")
     .delete()
     .eq("id", params.data.id)
@@ -56,6 +72,11 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext<"/api/proj
     return errorResponse("internal", "Something went wrong.");
   }
   if (data.length === 0) return errorResponse("not_found", NOT_FOUND);
+
+  // The owner owned the project (the delete returned it), so the service client may
+  // remove its files. A failed remove is logged with the keys for retry.
+  const keys = files.flatMap((f) => (f.storage_key ? [f.storage_key] : []));
+  await removeObjects(keys, `deleted project ${params.data.id}`);
 
   const body: OkResponse = { ok: true };
   return Response.json(body);

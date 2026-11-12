@@ -13,6 +13,8 @@ vi.mock("@clerk/nextjs/server", async () => {
 });
 vi.mock("../../../../lib/supabase/owner", async () => ({ createOwnerClient: (await h).owner.create }));
 vi.mock("../../../../lib/supabase/service", async () => ({ createServiceClient: (await h).service.create }));
+const removeObjects = vi.hoisted(() => vi.fn<(keys: readonly string[], reason: string) => Promise<boolean>>(async () => true));
+vi.mock("../../../../lib/knowledge/storage", () => ({ removeObjects }));
 
 const { PATCH, DELETE } = await import("./route");
 const { owner, service, userId } = await h;
@@ -45,6 +47,7 @@ beforeEach(() => {
     c.create.mockClear();
   }
   userId.value = "user_a";
+  removeObjects.mockClear();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -85,19 +88,37 @@ describe("PATCH /api/projects/:id", () => {
 });
 
 describe("DELETE /api/projects/:id", () => {
-  it("deletes through the owner client and returns ok", async () => {
-    owner.state.results.push({ data: [{ id: ID }], error: null });
+  const FILES = { data: [{ storage_key: `${ID}/a.pdf` }, { storage_key: null }, { storage_key: `${ID}/b.md` }], error: null };
+
+  it("reads the file keys, deletes through the owner client, then removes the files", async () => {
+    owner.state.results.push(FILES, { data: [{ id: ID }], error: null });
     const res = await del(ID);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(owner.state.calls).toContainEqual(["delete"]);
-    expect(owner.state.calls).toContainEqual(["eq", "id", ID]);
+    expect(owner.state.calls).toEqual([
+      ["from", "knowledge_sources"],
+      ["select", "storage_key"],
+      ["eq", "project_id", ID],
+      ["from", "projects"],
+      ["delete"],
+      ["eq", "id", ID],
+      ["select", "id"],
+    ]);
+    // Pasted text (null key) has no file.
+    expect(removeObjects).toHaveBeenCalledWith([`${ID}/a.pdf`, `${ID}/b.md`], `deleted project ${ID}`);
     expect(service.create).not.toHaveBeenCalled();
   });
 
-  it("404 for another owner's project (RLS deletes nothing)", async () => {
-    owner.state.results.push({ data: [], error: null });
+  it("still answers ok when removing the files fails (removeObjects logs the keys)", async () => {
+    owner.state.results.push(FILES, { data: [{ id: ID }], error: null });
+    removeObjects.mockResolvedValueOnce(false);
+    expect((await del(ID)).status).toBe(200);
+  });
+
+  it("404 for another owner's project (RLS returns no keys and deletes nothing), removing no files", async () => {
+    owner.state.results.push({ data: [], error: null }, { data: [], error: null });
     expect((await del(ID)).status).toBe(404);
+    expect(removeObjects).not.toHaveBeenCalled();
   });
 
   it("400 for a bad id", async () => {
@@ -105,11 +126,20 @@ describe("DELETE /api/projects/:id", () => {
     expect(owner.create).not.toHaveBeenCalled();
   });
 
-  it("500 on a database error, without leaking it", async () => {
+  it("500 when reading the file keys fails, deleting nothing", async () => {
     owner.state.results.push({ data: null, error: { message: "boom" } });
     const res = await del(ID);
     expect(res.status).toBe(500);
+    expect(owner.state.calls).not.toContainEqual(["delete"]);
+    expect(removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("500 on a delete error, without leaking it or removing files", async () => {
+    owner.state.results.push(FILES, { data: null, error: { message: "boom" } });
+    const res = await del(ID);
+    expect(res.status).toBe(500);
     expect((await res.json()).error.message).toBe("Something went wrong.");
+    expect(removeObjects).not.toHaveBeenCalled();
   });
 
   it("401 when signed out", async () => {
