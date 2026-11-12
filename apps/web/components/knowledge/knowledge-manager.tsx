@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { KnowledgeSource, KnowledgeSourceType, Plan } from "@askwell/shared";
 import { deleteSource, finalizeUpload, pasteText, putFile, requestUpload } from "./api";
@@ -20,7 +20,7 @@ export const POLL_MS = 3000;
 export const MAX_POLL_MS = 5 * 60 * 1000;
 
 /** An add still in flight in this tab, shown as a row until the server list has it. */
-type Pending = {
+export type Pending = {
   key: string;
   id: string | null;
   title: string;
@@ -36,6 +36,41 @@ type Pending = {
 const IDLE: RowState = { confirming: false, deleting: false, error: null };
 
 /**
+ * The rows to show, and how many sources count toward the limit. Pure.
+ *
+ * - An active add (not finished) always shows as its own row, with its upload progress,
+ *   and hides the server row for the same id (a poll can list the reservation while
+ *   the file is still uploading).
+ * - A finished add stays until a newer server list arrives, which either lists the
+ *   source or no longer has it (e.g. a refused file). Then the server row wins.
+ */
+export function listItems(
+  sources: KnowledgeSource[],
+  pending: Pending[],
+  deleted: ReadonlySet<string>,
+): { items: SourceItem[]; used: number } {
+  const active = pending.filter((p) => !p.doneWith);
+  const activeIds = new Set(active.flatMap((p) => (p.id ? [p.id] : [])));
+  const server = sources.filter((s) => !deleted.has(s.id) && !activeIds.has(s.id));
+  const listed = new Set(server.map((s) => s.id));
+  const finished = pending.filter((p) => p.doneWith === sources && p.id !== null && !listed.has(p.id));
+  const local = [...active, ...finished];
+  const items: SourceItem[] = [
+    ...local.map((p) => ({
+      key: p.key,
+      id: p.id,
+      title: p.title,
+      type: p.type,
+      status: "Processing" as const,
+      createdAt: null,
+      progress: p.progress,
+    })),
+    ...server.map((s) => ({ key: s.id, id: s.id, title: s.title, type: s.type, status: statusLabel(s.status), createdAt: s.createdAt })),
+  ];
+  return { items, used: items.length };
+}
+
+/**
  * The Knowledge page's state: the add forms, in-flight adds, deletes, and refreshing the
  * server-rendered list (router.refresh) until every source has settled.
  */
@@ -45,6 +80,8 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteBody, setPasteBody] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
+  /** The upload title came from the file name (not typed), so a new file may replace it. */
+  const [titleFromFile, setTitleFromFile] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -52,17 +89,12 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
 
   const busy = pending.some((p) => !p.doneWith);
-  const visible = useMemo(() => sources.filter((s) => !deleted.has(s.id)), [sources, deleted]);
-  const known = useMemo(() => new Set(visible.map((s) => s.id)), [visible]);
-  // A finished add is replaced by any newer server list: it either lists the source or
-  // the source is gone. Stale entries are pruned on the next add.
-  const inFlight = pending.filter((p) => (p.doneWith ? p.doneWith === sources : true) && (p.id === null || !known.has(p.id)));
-  const used = visible.length + inFlight.length;
+  const { items, used } = listItems(sources, pending, deleted);
   const atLimit = used >= sourceLimit(plan);
 
   // Refresh while any source the server knows about is still settling, up to MAX_POLL_MS
   // (an abandoned upload stays `uploading` until the 2-hour reclaim).
-  const settling = visible.some((s) => isSettling(s.status));
+  const settling = sources.some((s) => !deleted.has(s.id) && isSettling(s.status));
   useEffect(() => {
     if (!settling) return;
     const started = Date.now();
@@ -72,19 +104,6 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [settling, router]);
-
-  const items: SourceItem[] = [
-    ...inFlight.map((p) => ({
-      key: p.key,
-      id: p.id,
-      title: p.title,
-      type: p.type,
-      status: "Processing" as const,
-      createdAt: null,
-      progress: p.progress,
-    })),
-    ...visible.map((s) => ({ key: s.id, id: s.id, title: s.title, type: s.type, status: statusLabel(s.status), createdAt: s.createdAt })),
-  ];
 
   function openMode(next: AddMode) {
     setMode(next);
@@ -118,10 +137,14 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
       drop(key);
       return setFormError(result.message);
     }
+    settle(key, result.data.id);
+    if (result.data.status === "failed") {
+      // Saved but not processed: keep the draft so the owner can retry after deleting it.
+      return setFormError("We couldn't process this text. Delete the failed source below, then try again: your text is still here.");
+    }
     setPasteTitle("");
     setPasteBody("");
     setMode("none");
-    settle(key, result.data.id);
   }
 
   function pickFile(next: File | null) {
@@ -130,7 +153,10 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
     if (!next) return;
     const check = checkFile(next);
     if (!check.ok) return setFormError(check.message);
-    if (uploadTitle.trim() === "") setUploadTitle(titleFromFileName(next.name));
+    if (uploadTitle.trim() === "" || titleFromFile) {
+      setUploadTitle(titleFromFileName(next.name));
+      setTitleFromFile(true);
+    }
   }
 
   async function submitUpload() {
@@ -153,12 +179,18 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
     const sent = await putFile(reserved.data.uploadUrl, file, check.ext, (progress) => update(key, { progress }));
     if (!sent.ok) {
       // Free the reservation so it doesn't count toward the limit.
-      await deleteSource(sourceId);
+      const freed = await deleteSource(sourceId);
       drop(key);
+      if (!freed.ok && freed.code !== "not_found") {
+        // It still holds a slot: refresh so it shows in the list, where it can be deleted.
+        router.refresh();
+        return setFormError(`${sent.message} Its slot couldn't be freed: delete it from the list below.`);
+      }
       return setFormError(sent.message);
     }
 
     setUploadTitle("");
+    setTitleFromFile(false);
     setFile(null);
     setMode("none");
     update(key, { progress: undefined });
@@ -171,6 +203,9 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
       return;
     }
     settle(key, sourceId);
+    if (done.data.status === "failed") {
+      setFormError("We couldn't process this file. Delete the failed source below, then upload it again.");
+    }
   }
 
   const rowState = (key: string) => rows[key] ?? IDLE;
@@ -204,8 +239,14 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
           text={pasteBody}
           error={formError}
           pending={busy}
-          onTitle={setPasteTitle}
-          onText={setPasteBody}
+          onTitle={(v) => {
+            setPasteTitle(v);
+            setFormError(null);
+          }}
+          onText={(v) => {
+            setPasteBody(v);
+            setFormError(null);
+          }}
           onSubmit={submitPaste}
           onCancel={() => openMode("none")}
         />
@@ -216,7 +257,11 @@ export function KnowledgeManager({ projectId, plan, sources }: { projectId: stri
           file={file}
           error={formError}
           pending={busy}
-          onTitle={setUploadTitle}
+          onTitle={(v) => {
+            setUploadTitle(v);
+            setTitleFromFile(false);
+            setFormError(null);
+          }}
           onFile={pickFile}
           onSubmit={submitUpload}
           onCancel={() => openMode("none")}

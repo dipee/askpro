@@ -12,6 +12,8 @@ import type { ApiResult } from "../projects/api";
 export type { ApiResult };
 
 const FALLBACK = "Something went wrong. Please try again.";
+/** Give up on a stalled upload after this long (10 MB on a slow connection fits easily). */
+export const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const OFFLINE = "Couldn't reach the server. Check your connection.";
 
 async function call<T>(url: string, init: RequestInit): Promise<ApiResult<T>> {
@@ -88,6 +90,10 @@ export function putFile(
           : { ok: false, code: "internal", message: "The upload didn't go through. Please try again." },
       );
     xhr.onerror = () => resolve({ ok: false, code: "network", message: OFFLINE });
+    // A stalled connection fires neither load nor error: give up and use the error path.
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.ontimeout = () => resolve({ ok: false, code: "network", message: "The upload timed out. Check your connection and try again." });
+    xhr.onabort = () => resolve({ ok: false, code: "network", message: "The upload was interrupted. Please try again." });
     xhr.send(file);
   });
 }
