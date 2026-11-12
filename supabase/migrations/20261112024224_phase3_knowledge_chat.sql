@@ -140,6 +140,11 @@ grant execute on function public.reserve_knowledge_source(uuid, text, text, text
 -- (`distance + 0`, as pgvector requires on Postgres 17+ for a materialized CTE).
 -- ---------------------------------------------------------------------------
 
+-- Load pgvector in this session first. Until it's loaded, Postgres treats hnsw.* as an
+-- unknown setting that only a superuser may put in a function's SET clause, and
+-- Supabase's migration role isn't one (42501). Once loaded, hnsw.* is user-settable.
+select '[1]'::extensions.vector;
+
 create function public.match_chunks(
   p_project_id uuid,
   p_embedding extensions.vector(1536),
