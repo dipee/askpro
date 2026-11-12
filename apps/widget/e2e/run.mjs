@@ -106,12 +106,13 @@ try {
   const button = widget.locator("button.b");
   await button.waitFor({ timeout: 20000 });
   const b = await button.evaluate((el) => {
-    const cs = getComputedStyle(el);
+    const win = el.ownerDocument.defaultView;
+    const cs = win.getComputedStyle(el);
     const r = el.getBoundingClientRect();
     return {
       background: cs.backgroundColor,
-      right: Math.round(innerWidth - r.right),
-      bottom: Math.round(innerHeight - r.bottom),
+      right: Math.round(win.innerWidth - r.right),
+      bottom: Math.round(win.innerHeight - r.bottom),
       label: el.textContent,
     };
   });
@@ -142,7 +143,7 @@ try {
   // 7. Close.
   await panel.getByRole("button", { name: "Close chat" }).click();
   await host.waitForTimeout(500);
-  const visibility = await widget.locator(".p").evaluate((el) => getComputedStyle(el).visibility);
+  const visibility = await widget.locator(".p").evaluate((el) => el.ownerDocument.defaultView.getComputedStyle(el).visibility);
   check("close hides the panel", visibility === "hidden", `visibility=${visibility}`);
   await shot(host, "05-closed");
 
