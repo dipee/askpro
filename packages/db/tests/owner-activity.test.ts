@@ -40,12 +40,14 @@ async function conversation(
     [projectId, minutesAgo],
   );
   const id = rows[0].id;
-  for (const m of messages) {
-    await pg.db.query("insert into public.messages (conversation_id, role, body) values ($1, $2, $3)", [
-      id,
-      m.role,
-      m.body,
-    ]);
+  // Explicit, increasing created_at (1 s apart): pglite's clock_timestamp() has only
+  // millisecond resolution, so back-to-back inserts can tie and the id tiebreak is random.
+  for (const [i, m] of messages.entries()) {
+    await pg.db.query(
+      `insert into public.messages (conversation_id, role, body, created_at)
+       values ($1, $2, $3, now() - make_interval(mins => $4) + make_interval(secs => $5))`,
+      [id, m.role, m.body, minutesAgo, i + 1],
+    );
   }
   return id;
 }
