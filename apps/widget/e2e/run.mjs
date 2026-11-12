@@ -1,4 +1,4 @@
-// Phase 2 end-to-end check, driven like a customer (see README.md).
+// Phase 2 + Phase 3 end-to-end check, driven like a customer (see README.md).
 // Not part of the test suite and not a repo dependency: run it with
 // playwright-core installed in a scratch folder.
 //
@@ -6,10 +6,22 @@
 //   VERCEL_AUTOMATION_BYPASS_SECRET=… CLERK_SECRET_KEY=… CHROMIUM=/usr/bin/chromium \
 //   node run.mjs ./out
 import { mkdirSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 // Must match NOT_RENDERING in apps/widget/src/widget.ts.
 const NOT_RENDERING = "[widget] bad key, origin or config; not rendering";
+// Must match I_DONT_KNOW_REPLY in apps/web/lib/chat/prompt.ts.
+const I_DONT_KNOW = "I don't know the answer to that based on the information I have.";
+// Must match CHAT_ERROR_MESSAGES.rate_limited in apps/web/components/embed/chat-api.ts.
+const RATE_LIMITED = "You're sending messages too fast. Wait a moment.";
+// Must match CHAT_RATE_LIMIT in apps/web/lib/arcjet.ts.
+const RATE_LIMIT = 20;
+// The made-up fact in fixtures/fact.pdf (made by fixtures/make-pdf.py).
+const FACT_PDF = process.env.FACT_PDF ?? fileURLToPath(new URL("./fixtures/fact.pdf", import.meta.url));
+const FACT_QUESTION = "What is the name of your office cat?";
+const FACT_ANSWER = "Marmaduke Fizzlewick";
+const UNRELATED_QUESTION = "What is the capital city of Mongolia?";
 const out = process.argv[2] ?? "./out";
 mkdirSync(out, { recursive: true });
 const PREVIEW = process.env.PREVIEW_URL.replace(/\/$/, "");
@@ -57,8 +69,30 @@ context.on("page", (p) => {
 });
 const shot = (page, name) => page.screenshot({ path: `${out}/${name}.png` });
 
+// Optional: with SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and the dev project's
+// SUPABASE_SECRET_KEY, lists the project's files in the private `knowledge` bucket
+// so the run can prove the delete removed them. Returns null when not configured.
+const SUPABASE_URL = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, "");
+async function storageKeys(id) {
+  if (!SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY || !id) return null;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/knowledge`, {
+    method: "POST",
+    headers: {
+      apikey: process.env.SUPABASE_SECRET_KEY,
+      Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ prefix: `${id}/`, limit: 100 }),
+  });
+  if (!res.ok) throw new Error(`storage list failed: ${res.status} ${await res.text()}`);
+  return (await res.json()).map((o) => o.name);
+}
+
+let page;
+// Set while the test project exists, so a failed run still deletes it.
+let projectId = null;
 try {
-  const page = await context.newPage();
+  page = await context.newPage();
 
   // 1. Protected preview: set the bypass cookie (SameSite=None so it also works
   //    for the cross-site script and iframe on the host page).
@@ -94,6 +128,8 @@ try {
     await page.waitForURL(/\/install$/);
   }
   check("create project → project Install tab", true, new URL(page.url()).pathname);
+  projectId = new URL(page.url()).pathname.split("/")[3];
+  log(`Project: ${projectId}`);
 
   // 4. Copy the snippet (Copy button → clipboard).
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: PREVIEW });
@@ -106,6 +142,23 @@ try {
   check("snippet copied from Install", snippetOk && copied === shown, `clipboard=${JSON.stringify(copied)} shown=${JSON.stringify(shown)}`);
   const snippet = copied || shown;
   await shot(page, "02-install");
+
+  // 4b. Phase 3: upload the fact PDF on the Knowledge tab and wait for Ready.
+  await page.getByRole("link", { name: "Knowledge", exact: true }).first().click();
+  await page.waitForURL(/\/knowledge$/);
+  await page.getByRole("button", { name: "Upload file" }).click();
+  await page.locator("#upload-file").setInputFiles(FACT_PDF);
+  await page.locator("#upload-title").fill("Office facts");
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
+  const sources = page.getByRole("list", { name: "Knowledge sources" });
+  const started = Date.now();
+  const status = await sources
+    .locator('[data-status="Ready"], [data-status="Failed"]')
+    .first()
+    .waitFor({ timeout: 90000 })
+    .then(() => sources.locator("[data-status]").first().getAttribute("data-status"), () => "timeout");
+  check("upload PDF → Ready", status === "Ready", `(status=${status}, ${Math.round((Date.now() - started) / 1000)}s)`);
+  await shot(page, "02b-knowledge-ready");
 
   // 5. Paste into the plain host page on another origin and load it.
   const host = await context.newPage();
@@ -133,7 +186,7 @@ try {
   );
   await shot(host, "03-host-button");
 
-  // 6. Open the panel, send a message, see the typing state and the mock reply.
+  // 6. Open the panel, ask about the PDF: typing state, then a real answer with the fact.
   await button.click();
   const panel = host.frameLocator("[data-askwell-widget] >> iframe");
   await panel.getByRole("heading").first().waitFor({ timeout: 25000 });
@@ -143,12 +196,31 @@ try {
     src.startsWith(`${PREVIEW}/embed?key=pk_`) && src.endsWith(`&origin=${encodeURIComponent(new URL(HOST).origin)}`),
     src,
   );
-  await panel.getByLabel("Message", { exact: true }).fill("Do you fix leaking taps on weekends?");
-  await panel.getByRole("button", { name: "Send" }).click();
-  const typing = await panel.getByTestId("typing").waitFor({ timeout: 2000 }).then(() => true, () => false);
-  await panel.getByText("Thanks! Real answers arrive soon.").waitFor({ timeout: 5000 });
-  check("send → typing state → mock reply", typing, `typing=${typing}`);
+  const ask = async (text) => {
+    const bots = panel.locator('li[data-role="bot"]');
+    const before = await bots.count();
+    await panel.getByLabel("Message", { exact: true }).fill(text);
+    await panel.getByRole("button", { name: "Send" }).click();
+    const typing = await panel.getByTestId("typing").waitFor({ timeout: 2000 }).then(() => true, () => false);
+    // Done when the typing dots are gone: either a new bot reply or an error notice.
+    await panel.getByTestId("typing").waitFor({ state: "detached", timeout: 35000 });
+    const reply = (await bots.count()) > before ? (await bots.last().innerText()).trim() : null;
+    // The notice is display:none while empty, so find it by selector, not by role.
+    const error = (await panel.locator('p[role="alert"]').textContent())?.trim() ?? "";
+    return { typing, reply, error };
+  };
+  const fact = await ask(FACT_QUESTION);
+  check(
+    "ask about the PDF → typing state → answer contains the fact",
+    fact.typing && fact.reply?.includes(FACT_ANSWER) === true,
+    JSON.stringify(fact),
+  );
   await shot(host, "04-panel-reply");
+
+  // 6b. An unrelated question → the fixed "I don't know" reply.
+  const unrelated = await ask(UNRELATED_QUESTION);
+  check('unrelated question → fixed "I don\'t know" reply', unrelated.reply === I_DONT_KNOW, JSON.stringify(unrelated));
+  await shot(host, "04b-panel-idk");
 
   // 7. Close.
   await panel.getByRole("button", { name: "Close chat" }).click();
@@ -172,10 +244,59 @@ try {
   const count = await wrong.locator("[data-askwell-widget]").count();
   check("wrong data-key shows nothing", count === 0, `widget elements=${count}`);
   await shot(wrong, "06-wrong-key");
+  await wrong.close();
+
+  // 9. Rate limit: 20 messages per minute per key + IP. Wait out the window the
+  //    questions above used, then send 21 in a row from the panel.
+  log("Waiting 65s for a fresh rate-limit window");
+  await host.waitForTimeout(65000);
+  await button.click();
+  await panel.getByRole("heading").first().waitFor();
+  const burstStart = Date.now();
+  const burst = [];
+  for (let i = 1; i <= RATE_LIMIT + 1; i++) {
+    const r = await ask(`Do you fix leaking taps? (${i})`);
+    burst.push({ i, s: Math.round((Date.now() - burstStart) / 100) / 10, replied: r.reply !== null, error: r.error });
+  }
+  const elapsed = (Date.now() - burstStart) / 1000;
+  log(`Burst: ${JSON.stringify(burst)}`);
+  const first20 = burst.slice(0, RATE_LIMIT).every((b) => b.replied && !b.error);
+  const last = burst[RATE_LIMIT];
+  check(
+    `${RATE_LIMIT + 1} messages in a minute → first ${RATE_LIMIT} answered, the ${RATE_LIMIT + 1}st refused in the panel`,
+    first20 && !last.replied && last.error === RATE_LIMITED && elapsed < 60,
+    `(elapsed ${elapsed.toFixed(1)}s, 21st error=${JSON.stringify(last.error)})`,
+  );
+  await shot(host, "07-rate-limited");
+
+  // 10. Clean up: delete the project from the dashboard (also deletes its stored files).
+  const filesBefore = await storageKeys(projectId);
+  if (filesBefore) log(`Stored files before delete: ${JSON.stringify(filesBefore)}`);
+  await page.goto(`${PREVIEW}/dashboard`);
+  await page.getByRole("button", { name: "Delete", exact: true }).first().click();
+  await page.getByRole("alertdialog", { name: "Confirm delete" }).getByRole("button", { name: "Delete project" }).click();
+  await page.getByText("E2E Acme Plumbing").waitFor({ state: "detached", timeout: 20000 });
+  check("delete the test project", true);
+  const deletedId = projectId;
+  projectId = null;
+  if (filesBefore) {
+    const filesAfter = await storageKeys(deletedId);
+    check("its stored files are gone", filesBefore.length > 0 && filesAfter?.length === 0, `before=${filesBefore.length} after=${filesAfter?.length}`);
+  } else {
+    log("SKIP storage cleanup check (set SUPABASE_URL and SUPABASE_SECRET_KEY to run it)");
+  }
+  await shot(page, "08-project-deleted");
 } catch (error) {
   check("run", false, String(error).slice(0, 500));
 } finally {
-  // 9. No CSP / framing errors anywhere (host page, widget, iframe).
+  if (projectId && page) {
+    // The run failed before its cleanup step: delete the test project through the API.
+    const status = await page
+      .evaluate((id) => fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => r.status), projectId)
+      .catch((e) => String(e));
+    log(`Cleanup after failure: DELETE /api/projects/${projectId} → ${status}`);
+  }
+  // 11. No CSP / framing errors anywhere (host page, widget, iframe).
   const bad = consoleLines.filter((l) => /content security policy|frame-ancestors|x-frame-options|refused to (frame|display|load)|blocked a frame/i.test(l));
   check("no CSP or framing errors in the console", bad.length === 0, bad.length ? JSON.stringify(bad) : "");
   writeFileSync(`${out}/console.log`, consoleLines.join("\n") + "\n");
